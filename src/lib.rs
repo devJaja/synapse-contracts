@@ -174,9 +174,12 @@ impl SynapseContract {
 
     // TODO(#40): add `get_dlq_entry(tx_id)` query
     // TODO(#41): add `get_admin()` query
-    // TODO(#42): add `is_paused()` query
     // TODO(#43): add `get_min_deposit()` query
     // TODO(#44): add `get_max_deposit()` query
+
+    pub fn is_paused(env: Env) -> bool {
+        storage::pause::is_paused(&env)
+    }
 
     pub fn get_transaction(env: Env, tx_id: SorobanString) -> Transaction {
         deposits::get(&env, &tx_id)
@@ -192,5 +195,38 @@ impl SynapseContract {
 
     pub fn is_relayer(env: Env, address: Address) -> bool {
         relayers::has(&env, &address)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use soroban_sdk::{testutils::Address as _, Env};
+
+    fn setup(env: &Env) -> (Address, Address) {
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SynapseContract);
+        let client = SynapseContractClient::new(env, &contract_id);
+        let admin = Address::generate(env);
+        client.initialize(&admin);
+        (admin, contract_id)
+    }
+
+    #[test]
+    fn test_is_paused() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        
+        // Initially should not be paused
+        assert!(!client.is_paused());
+        
+        // Pause the contract
+        client.pause(&admin);
+        assert!(client.is_paused());
+        
+        // Unpause the contract
+        client.unpause(&admin);
+        assert!(!client.is_paused());
     }
 }
