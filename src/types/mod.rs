@@ -110,7 +110,6 @@ impl DlqEntry {
 
 /// Contract events — one variant per state change.
 // TODO(#51): add `RelayerGranted(Address)` variant
-// TODO(#52): add `RelayerRevoked(Address)` variant
 // TODO(#53): add `Initialized(Address)` variant
 // TODO(#54): add `ContractPaused` / `ContractUnpaused` variants
 // TODO(#55): add `DlqRetried(SorobanString)` variant
@@ -125,8 +124,23 @@ pub enum Event {
     SettlementFinalized(SorobanString, SorobanString, i128), // (settlement_id, asset_code, total)
     AssetAdded(SorobanString),
     AssetRemoved(SorobanString),
+    RelayerRevoked(Address),
 }
 
 fn generate_id(env: &Env) -> SorobanString {
-    SorobanString::from_str(env, &soroban_sdk::format!("{}-{}", env.ledger().timestamp(), env.ledger().sequence()))
+    let ts = env.ledger().timestamp();
+    let seq = env.ledger().sequence();
+    let mut data = [0u8; 12];
+    data[..8].copy_from_slice(&ts.to_be_bytes());
+    data[8..12].copy_from_slice(&seq.to_be_bytes());
+    let hash = env.crypto().sha256(&soroban_sdk::Bytes::from_slice(env, &data));
+    let bytes = hash.to_array();
+    // encode first 16 bytes as 32-char hex
+    let mut hex = [0u8; 32];
+    const HEX: &[u8] = b"0123456789abcdef";
+    for i in 0..16 {
+        hex[i * 2]     = HEX[(bytes[i] >> 4) as usize];
+        hex[i * 2 + 1] = HEX[(bytes[i] & 0xf) as usize];
+    }
+    SorobanString::from_bytes(env, &hex)
 }
