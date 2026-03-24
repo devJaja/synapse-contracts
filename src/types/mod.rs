@@ -113,7 +113,6 @@ impl DlqEntry {
 /// Contract events — one variant per state change.
 // TODO(#51): add `RelayerGranted(Address)` variant
 // TODO(#52): add `RelayerRevoked(Address)` variant
-// TODO(#53): add `Initialized(Address)` variant
 // TODO(#54): add `ContractPaused` / `ContractUnpaused` variants
 // TODO(#55): add `DlqRetried(SorobanString)` variant
 // TODO(#56): add `MaxRetriesExceeded(SorobanString)` variant
@@ -121,6 +120,7 @@ impl DlqEntry {
 #[contracttype]
 #[derive(Clone)]
 pub enum Event {
+    Initialized(Address),                                    // (admin)
     DepositRegistered(SorobanString, SorobanString), // (tx_id, anchor_id)
     StatusUpdated(SorobanString, TransactionStatus),  // (tx_id, new_status)
     MovedToDlq(SorobanString, SorobanString),         // (tx_id, error_reason)
@@ -130,9 +130,23 @@ pub enum Event {
 }
 
 fn generate_id(env: &Env) -> SorobanString {
-    // Simple ID generation using timestamp and sequence
-    let timestamp = env.ledger().timestamp();
-    let sequence = env.ledger().sequence();
-    let id_str = format!("{}-{}", timestamp, sequence);
-    SorobanString::from_str(env, &id_str)
+    let ts = env.ledger().timestamp();
+    let seq = env.ledger().sequence() as u64;
+    let combined = ts * 1_000_000 + seq;
+    // Format combined u64 as decimal string without std::format!
+    let mut buf = [0u8; 20]; // max u64 is 20 digits
+    let mut n = combined;
+    let mut i = buf.len();
+    if n == 0 {
+        i -= 1;
+        buf[i] = b'0';
+    } else {
+        while n > 0 {
+            i -= 1;
+            buf[i] = b'0' + (n % 10) as u8;
+            n /= 10;
+        }
+    }
+    let s = core::str::from_utf8(&buf[i..]).unwrap_or("0");
+    SorobanString::from_str(env, s)
 }

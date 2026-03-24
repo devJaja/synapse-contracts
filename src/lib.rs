@@ -17,10 +17,10 @@ pub struct SynapseContract;
 #[contractimpl]
 impl SynapseContract {
     // TODO(#1): prevent re-initialisation — panic if admin already set
-    // TODO(#2): emit `Initialized` event on first call
     pub fn initialize(env: Env, admin: Address) {
         admin.require_auth();
         storage::admin::set(&env, &admin);
+        emit(&env, Event::Initialized(admin));
     }
 
     // TODO(#3): emit `RelayerGranted` event
@@ -87,7 +87,6 @@ impl SynapseContract {
     // TODO(#19): add `memo_type` field support (text | hash | id)
     // TODO(#20): add `callback_type` field (deposit | withdrawal)
     // TODO(#21): bump persistent TTL on AnchorIdx entry after save
-    // TODO(#22): bump persistent TTL on Tx entry after save
     pub fn register_deposit(
         env: Env,
         caller: Address,
@@ -112,7 +111,6 @@ impl SynapseContract {
     }
 
     // TODO(#23): enforce transition guard — must be Pending
-    // TODO(#24): bump Tx TTL on every status update
     pub fn mark_processing(env: Env, caller: Address, tx_id: SorobanString) {
         require_relayer(&env, &caller);
         let mut tx = deposits::get(&env, &tx_id);
@@ -212,7 +210,7 @@ impl SynapseContract {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, vec, Env, String as SorobanString};
+    use soroban_sdk::{testutils::{Address as _, Events as _}, vec, Env, IntoVal, String as SorobanString, symbol_short};
 
     fn setup(env: &Env) -> (Address, Address) {
         env.mock_all_auths();
@@ -221,6 +219,21 @@ mod tests {
         let admin = Address::generate(env);
         client.initialize(&admin);
         (admin, contract_id)
+    }
+
+    #[test]
+    fn test_initialize_emits_initialized_event() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SynapseContract);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+        let events = env.events().all();
+        assert_eq!(events.len(), 1);
+        let (emitting_contract, topics, _data) = events.get(0).unwrap();
+        assert_eq!(emitting_contract, contract_id);
+        assert_eq!(topics, (symbol_short!("synapse"),).into_val(&env));
     }
 
     #[test]
