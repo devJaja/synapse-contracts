@@ -72,6 +72,18 @@ pub mod assets {
     }
 }
 
+pub mod max_deposit {
+    use super::*;
+
+    pub fn set(env: &Env, amount: &i128) {
+        env.storage().instance().set(&StorageKey::MaxDeposit, amount);
+    }
+
+    pub fn get(env: &Env) -> i128 {
+        env.storage().instance().get(&StorageKey::MaxDeposit).unwrap_or(&0i128).clone()
+    }
+}
+
 pub mod deposits {
     use super::*;
     pub fn save(env: &Env, tx: &Transaction) {

@@ -8,7 +8,7 @@ mod types;
 use access::{require_admin, require_relayer};
 use events::emit;
 use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
-use storage::{assets, deposits, dlq, relayers, settlements};
+use storage::{assets, deposits, dlq, max_deposit, relayers, settlements};
 use types::{DlqEntry, Event, Settlement, Transaction, TransactionStatus};
 
 #[contract]
@@ -201,6 +201,15 @@ impl SynapseContract {
     pub fn is_relayer(env: Env, address: Address) -> bool {
         relayers::has(&env, &address)
     }
+
+    pub fn set_max_deposit(env: Env, caller: Address, amount: i128) {
+        require_admin(&env, &caller);
+        max_deposit::set(&env, &amount);
+    }
+
+    pub fn get_max_deposit(env: Env) -> i128 {
+        max_deposit::get(&env)
+    }
 }
 
 #[cfg(test)]
@@ -267,5 +276,23 @@ mod tests {
             &2u64,
             &1u64,
         );
+    }
+
+    #[test]
+    fn test_max_deposit() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+
+        // Default should be 0
+        assert_eq!(client.get_max_deposit(), 0i128);
+
+        // Set to 1000
+        client.set_max_deposit(&admin, &1000i128);
+        assert_eq!(client.get_max_deposit(), 1000i128);
+
+        // Set to 5000
+        client.set_max_deposit(&admin, &5000i128);
+        assert_eq!(client.get_max_deposit(), 5000i128);
     }
 }
