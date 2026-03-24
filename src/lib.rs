@@ -24,8 +24,16 @@ impl SynapseContract {
     }
 
     // TODO(#3): emit `RelayerGranted` event
-    // TODO(#4): prevent granting relayer to the zero/invalid address
     pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
+        // Reject the all-zeros Stellar account (GAAAAAA...AWHF) as an invalid address.
+        // This is the canonical "zero address" on Stellar — 32 zero bytes encoded as a G-address.
+        let zero_addr = Address::from_string(&SorobanString::from_str(
+            &env,
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+        ));
+        if relayer == zero_addr {
+            panic!("invalid relayer address")
+        }
         require_admin(&env, &caller);
         relayers::add(&env, &relayer);
     }
@@ -165,6 +173,9 @@ impl SynapseContract {
         period_end: u64,
     ) -> SorobanString {
         require_relayer(&env, &caller);
+        if period_start > period_end {
+            panic!("period_start must be <= period_end")
+        }
         let s = Settlement::new(&env, asset_code.clone(), tx_ids, total_amount, period_start, period_end);
         let id = s.id.clone();
         settlements::save(&env, &s);
@@ -174,9 +185,12 @@ impl SynapseContract {
 
     // TODO(#40): add `get_dlq_entry(tx_id)` query
     // TODO(#41): add `get_admin()` query
-    // TODO(#42): add `is_paused()` query
     // TODO(#43): add `get_min_deposit()` query
     // TODO(#44): add `get_max_deposit()` query
+
+    pub fn is_paused(env: Env) -> bool {
+        storage::pause::is_paused(&env)
+    }
 
     pub fn get_transaction(env: Env, tx_id: SorobanString) -> Transaction {
         deposits::get(&env, &tx_id)
@@ -192,5 +206,57 @@ impl SynapseContract {
 
     pub fn is_relayer(env: Env, address: Address) -> bool {
         relayers::has(&env, &address)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use soroban_sdk::{testutils::Address as _, vec, Env, String as SorobanString};
+
+    fn setup(env: &Env) -> (Address, Address) {
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, SynapseContract);
+        let client = SynapseContractClient::new(env, &contract_id);
+        let admin = Address::generate(env);
+        client.initialize(&admin);
+        (admin, contract_id)
+    }
+
+    #[test]
+    fn test_is_paused() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        
+        // Initially should not be paused
+        assert!(!client.is_paused());
+        
+        // Pause the contract
+        client.pause(&admin);
+        assert!(client.is_paused());
+        
+        // Unpause the contract
+        client.unpause(&admin);
+        assert!(!client.is_paused());
+    }
+
+    #[test]
+    #[should_panic(expected = "period_start must be <= period_end")]
+    fn test_finalize_settlement_panics_when_period_start_exceeds_period_end() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let relayer = Address::generate(&env);
+
+        client.grant_relayer(&admin, &relayer);
+        client.finalize_settlement(
+            &relayer,
+            &SorobanString::from_str(&env, "USD"),
+            &vec![&env],
+            &0i128,
+            &2u64,
+            &1u64,
+        );
     }
 }
