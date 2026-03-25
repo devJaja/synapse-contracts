@@ -226,31 +226,16 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
               },
               {
-                "symbol": "finalize_settlement"
+                "symbol": "revoke_relayer"
               }
             ],
             "data": {
               "vec": [
                 {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                },
+                {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                },
-                {
-                  "string": "USD"
-                },
-                {
-                  "vec": []
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 0
-                  }
-                },
-                {
-                  "u64": 2
-                },
-                {
-                  "u64": 1
                 }
               ]
             }
@@ -274,28 +259,13 @@
             "data": {
               "vec": [
                 {
-                  "string": "caught panic 'not relayer' from contract function 'Symbol(obj#31)'"
+                  "string": "caught panic 'address is not a relayer' from contract function 'Symbol(obj#27)'"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                },
-                {
-                  "string": "USD"
-                },
-                {
-                  "vec": []
-                },
-                {
-                  "i128": {
-                    "hi": 0,
-                    "lo": 0
-                  }
-                },
-                {
-                  "u64": 2
-                },
-                {
-                  "u64": 1
                 }
               ]
             }
@@ -352,30 +322,15 @@
                   "string": "contract call failed"
                 },
                 {
-                  "symbol": "finalize_settlement"
+                  "symbol": "revoke_relayer"
                 },
                 {
                   "vec": [
                     {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                    },
+                    {
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                    },
-                    {
-                      "string": "USD"
-                    },
-                    {
-                      "vec": []
-                    },
-                    {
-                      "i128": {
-                        "hi": 0,
-                        "lo": 0
-                      }
-                    },
-                    {
-                      "u64": 2
-                    },
-                    {
-                      "u64": 1
                     }
                   ]
                 }

@@ -93,7 +93,8 @@
                 },
                 {
                   "string": "USD"
-                }
+                },
+                "void"
               ]
             }
           },
@@ -155,7 +156,7 @@
             },
             "ext": "v0"
           },
-          172800
+          4095
         ]
       ],
       [
@@ -224,6 +225,12 @@
                     },
                     {
                       "key": {
+                        "symbol": "callback_type"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
                         "symbol": "created_ledger"
                       },
                       "val": {
@@ -240,11 +247,15 @@
                     },
                     {
                       "key": {
-                        "symbol": "relayer"
+                        "symbol": "memo"
                       },
-                      "val": {
-                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                      }
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "memo_type"
+                      },
+                      "val": "void"
                     },
                     {
                       "key": {
@@ -339,18 +350,6 @@
                         },
                         "val": {
                           "bool": true
-                        }
-                      },
-                      {
-                        "key": {
-                          "vec": [
-                            {
-                              "symbol": "AssetCount"
-                            }
-                          ]
-                        },
-                        "val": {
-                          "u32": 1
                         }
                       },
                       {
@@ -780,7 +779,8 @@
                 },
                 {
                   "string": "USD"
-                }
+                },
+                "void"
               ]
             }
           }
@@ -913,6 +913,12 @@
                 },
                 {
                   "key": {
+                    "symbol": "callback_type"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
                     "symbol": "created_ledger"
                   },
                   "val": {
@@ -929,11 +935,15 @@
                 },
                 {
                   "key": {
-                    "symbol": "relayer"
+                    "symbol": "memo"
                   },
-                  "val": {
-                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                  }
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "memo_type"
+                  },
+                  "val": "void"
                 },
                 {
                   "key": {
