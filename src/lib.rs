@@ -95,6 +95,7 @@ impl SynapseContract {
     }
 
     pub fn set_max_deposit(env: Env, caller: Address, amount: i128) {
+        require_not_paused(&env);
         require_admin(&env, &caller);
         if amount <= 0 { panic!("max deposit must be positive") }
         max_deposit::set(&env, amount);
