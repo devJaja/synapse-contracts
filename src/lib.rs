@@ -164,11 +164,13 @@ impl SynapseContract {
         );
     }
 
-    // TODO(#25): enforce transition guard — must be Processing
     pub fn mark_completed(env: Env, caller: Address, tx_id: SorobanString) {
         require_not_paused(&env);
         require_relayer(&env, &caller);
         let mut tx = deposits::get(&env, &tx_id);
+        if !matches!(tx.status, TransactionStatus::Processing) {
+            panic!("transaction must be Processing");
+        }
         tx.status = TransactionStatus::Completed;
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
@@ -402,6 +404,34 @@ mod tests {
         client.mark_failed(&relayer, &tx_id, &err);
         let tx = client.get_transaction(&tx_id);
         assert!(matches!(tx.status, TransactionStatus::Failed));
+    }
+
+    #[test]
+    fn test_mark_completed_succeeds_when_processing() {
+        let env = Env::default();
+        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "mc-ok");
+        client.mark_processing(&relayer, &tx_id);
+        client.mark_completed(&relayer, &tx_id);
+        let tx = client.get_transaction(&tx_id);
+        assert!(matches!(tx.status, TransactionStatus::Completed));
+    }
+
+    #[test]
+    #[should_panic(expected = "transaction must be Processing")]
+    fn test_mark_completed_panics_when_pending() {
+        let env = Env::default();
+        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "mc-pending");
+        client.mark_completed(&relayer, &tx_id);
+    }
+
+    #[test]
+    #[should_panic(expected = "transaction must be Processing")]
+    fn test_mark_completed_panics_when_already_completed() {
+        let env = Env::default();
+        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "mc-twice");
+        client.mark_processing(&relayer, &tx_id);
+        client.mark_completed(&relayer, &tx_id);
+        client.mark_completed(&relayer, &tx_id);
     }
 
     #[test]
