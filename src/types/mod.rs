@@ -42,6 +42,7 @@ impl Transaction {
         stellar_account: Address,
         amount: i128,
         asset_code: SorobanString,
+        callback_type: Option<SorobanString>,
     ) -> Self {
         let ledger = env.ledger().sequence();
         Self {
@@ -54,7 +55,7 @@ impl Transaction {
             created_ledger: ledger,
             updated_ledger: ledger,
             settlement_id: SorobanString::from_str(env, ""),
-            callback_type: None,
+            callback_type,
         }
     }
 }

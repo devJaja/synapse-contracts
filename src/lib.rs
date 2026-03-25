@@ -82,10 +82,8 @@ impl SynapseContract {
 
     // TODO(#15): enforce minimum deposit amount (configurable by admin)
     // TODO(#16): enforce maximum deposit amount (configurable by admin)
-    // TODO(#17): validate anchor_transaction_id is non-empty
     // TODO(#18): add `memo` field support (mirrors synapse-core CallbackPayload)
     // TODO(#19): add `memo_type` field support (text | hash | id)
-    // TODO(#20): add `callback_type` field (deposit | withdrawal)
     // TODO(#21): bump persistent TTL on AnchorIdx entry after save
     pub fn register_deposit(
         env: Env,
@@ -94,16 +92,24 @@ impl SynapseContract {
         stellar_account: Address,
         amount: i128,
         asset_code: SorobanString,
+        callback_type: Option<SorobanString>,
     ) -> SorobanString {
         require_relayer(&env, &caller);
         if anchor_transaction_id.len() == 0 { panic!("anchor_transaction_id must not be empty"); }
+        if let Some(ref ct) = callback_type {
+            let deposit = SorobanString::from_str(&env, "deposit");
+            let withdrawal = SorobanString::from_str(&env, "withdrawal");
+            if *ct != deposit && *ct != withdrawal {
+                panic!("callback_type must be 'deposit' or 'withdrawal'");
+            }
+        }
         assets::require_allowed(&env, &asset_code);
 
         if let Some(existing) = deposits::find_by_anchor_id(&env, &anchor_transaction_id) {
             return existing;
         }
 
-        let tx = Transaction::new(&env, anchor_transaction_id.clone(), stellar_account, amount, asset_code);
+        let tx = Transaction::new(&env, anchor_transaction_id.clone(), stellar_account, amount, asset_code, callback_type);
         let id = tx.id.clone();
         deposits::save(&env, &tx);
         deposits::index_anchor_id(&env, &anchor_transaction_id, &id);
@@ -325,6 +331,72 @@ mod tests {
         let asset = SorobanString::from_str(&env, "USD");
         client.grant_relayer(&admin, &relayer);
         client.add_asset(&admin, &asset);
-        client.register_deposit(&relayer, &SorobanString::from_str(&env, ""), &stellar, &1i128, &asset);
+        client.register_deposit(&relayer, &SorobanString::from_str(&env, ""), &stellar, &1i128, &asset, &None);
+    }
+
+    #[test]
+    fn test_register_deposit_with_callback_type() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let relayer = Address::generate(&env);
+        let stellar = Address::generate(&env);
+        let asset = SorobanString::from_str(&env, "USD");
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &asset);
+
+        let tx_id = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "anchor-1"),
+            &stellar,
+            &100i128,
+            &asset,
+            &Some(SorobanString::from_str(&env, "deposit")),
+        );
+        let tx = client.get_transaction(&tx_id);
+        assert_eq!(tx.callback_type, Some(SorobanString::from_str(&env, "deposit")));
+
+        let tx_id2 = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "anchor-2"),
+            &stellar,
+            &100i128,
+            &asset,
+            &Some(SorobanString::from_str(&env, "withdrawal")),
+        );
+        let tx2 = client.get_transaction(&tx_id2);
+        assert_eq!(tx2.callback_type, Some(SorobanString::from_str(&env, "withdrawal")));
+
+        let tx_id3 = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "anchor-3"),
+            &stellar,
+            &100i128,
+            &asset,
+            &None,
+        );
+        let tx3 = client.get_transaction(&tx_id3);
+        assert_eq!(tx3.callback_type, None);
+    }
+
+    #[test]
+    #[should_panic(expected = "callback_type must be 'deposit' or 'withdrawal'")]
+    fn test_register_deposit_panics_on_invalid_callback_type() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let relayer = Address::generate(&env);
+        let stellar = Address::generate(&env);
+        let asset = SorobanString::from_str(&env, "USD");
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &asset);
+        client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "anchor-1"),
+            &stellar,
+            &100i128,
+            &asset,
+            &Some(SorobanString::from_str(&env, "transfer")),
+        );
     }
 }
