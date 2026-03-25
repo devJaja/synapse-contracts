@@ -8,7 +8,7 @@ mod types;
 use access::{require_admin, require_relayer};
 use events::emit;
 use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
-use storage::{assets, deposits, dlq, relayers, settlements};
+use storage::{admin, assets, deposits, dlq, pending_admin, relayers, settlements};
 use types::{DlqEntry, Event, Settlement, Transaction, TransactionStatus};
 
 #[contract]
@@ -42,6 +42,31 @@ impl SynapseContract {
     pub fn transfer_admin(env: Env, caller: Address, new_admin: Address) {
         require_admin(&env, &caller);
         storage::admin::set(&env, &new_admin);
+    }
+
+    /// Propose a new admin address for transfer.
+    /// Only the current admin can propose a new admin.
+    /// The proposed admin must accept the transfer to complete it.
+    pub fn propose_admin(env: Env, caller: Address, new_admin: Address) {
+        require_admin(&env, &caller);
+        pending_admin::set(&env, &new_admin);
+        let current_admin = admin::get(&env);
+        emit(&env, Event::AdminTransferProposed(current_admin, new_admin));
+    }
+
+    /// Accept the admin transfer proposal.
+    /// Only the proposed admin can accept the transfer.
+    /// After acceptance, the proposed admin becomes the new admin.
+    pub fn accept_admin(env: Env, caller: Address) {
+        caller.require_auth();
+        let pending = pending_admin::get(&env).expect("no pending admin transfer");
+        if caller != pending {
+            panic!("only proposed admin can accept");
+        }
+        let old_admin = admin::get(&env);
+        admin::set(&env, &pending);
+        pending_admin::clear(&env);
+        emit(&env, Event::AdminTransferred(old_admin, pending));
     }
 
     // TODO(#9): emit `ContractPaused` event
@@ -188,6 +213,11 @@ impl SynapseContract {
     // TODO(#43): add `get_min_deposit()` query
     // TODO(#44): add `get_max_deposit()` query
 
+    /// Get the current admin address
+    pub fn get_admin(env: Env) -> Address {
+        admin::get(&env)
+    }
+
     pub fn is_paused(env: Env) -> bool {
         storage::pause::is_paused(&env)
     }
@@ -239,5 +269,106 @@ mod tests {
         // Unpause the contract
         client.unpause(&admin);
         assert!(!client.is_paused());
+    }
+
+    #[test]
+    fn test_propose_and_accept_admin() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        
+        // Create a new admin address
+        let new_admin = Address::generate(&env);
+        
+        // Current admin proposes new admin
+        client.propose_admin(&admin, &new_admin);
+        
+        // New admin accepts the transfer
+        client.accept_admin(&new_admin);
+        
+        // Verify new admin is now the admin
+        // Note: We don't have a get_admin() function yet, but we can test
+        // by trying to perform admin operations
+        
+        // Old admin should no longer be able to perform admin operations
+        // This would panic if we tried, but we can't easily test that here
+        // without catching panics
+        
+        // New admin should be able to perform admin operations
+        // Let's test by having new admin pause the contract
+        client.pause(&new_admin);
+        assert!(client.is_paused());
+    }
+
+    #[test]
+    #[should_panic(expected = "only proposed admin can accept")]
+    fn test_accept_admin_wrong_caller() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        
+        let new_admin = Address::generate(&env);
+        let wrong_caller = Address::generate(&env);
+        
+        // Current admin proposes new admin
+        client.propose_admin(&admin, &new_admin);
+        
+        // Wrong caller tries to accept (should panic)
+        client.accept_admin(&wrong_caller);
+    }
+
+    #[test]
+    #[should_panic(expected = "no pending admin transfer")]
+    fn test_accept_admin_no_pending() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        
+        let random_address = Address::generate(&env);
+        
+        // Try to accept without a pending admin (should panic)
+        client.accept_admin(&random_address);
+    }
+
+    #[test]
+    #[should_panic(expected = "not admin")]
+    fn test_propose_admin_not_admin() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        
+        let non_admin = Address::generate(&env);
+        let new_admin = Address::generate(&env);
+        
+        // Non-admin tries to propose new admin (should panic)
+        client.propose_admin(&non_admin, &new_admin);
+    }
+
+    #[test]
+    fn test_admin_transfer_can_be_cancelled_by_new_proposal() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        
+        let first_proposed = Address::generate(&env);
+        let second_proposed = Address::generate(&env);
+        
+        // Admin proposes first admin
+        client.propose_admin(&admin, &first_proposed);
+        
+        // Before first proposed accepts, admin proposes a different admin
+        client.propose_admin(&admin, &second_proposed);
+        
+        // First proposed should not be able to accept anymore
+        // (This would panic with "no pending admin transfer" or similar)
+        // Actually, the pending admin is now second_proposed, so first_proposed
+        // would panic with "only proposed admin can accept"
+        
+        // Second proposed should be able to accept
+        client.accept_admin(&second_proposed);
+        
+        // Verify second proposed is now admin by having them pause
+        client.pause(&second_proposed);
+        assert!(client.is_paused());
     }
 }

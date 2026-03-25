@@ -8,6 +8,7 @@ use crate::types::{DlqEntry, Settlement, Transaction};
 #[contracttype]
 pub enum StorageKey {
     Admin,
+    PendingAdmin,
     Paused,
     MinDeposit,
     MaxDeposit,
@@ -26,6 +27,19 @@ pub mod admin {
     }
     pub fn get(env: &Env) -> Address {
         env.storage().instance().get(&StorageKey::Admin).expect("not initialised")
+    }
+}
+
+pub mod pending_admin {
+    use super::*;
+    pub fn set(env: &Env, pending_admin: &Address) {
+        env.storage().instance().set(&StorageKey::PendingAdmin, pending_admin);
+    }
+    pub fn get(env: &Env) -> Option<Address> {
+        env.storage().instance().get(&StorageKey::PendingAdmin)
+    }
+    pub fn clear(env: &Env) {
+        env.storage().instance().remove(&StorageKey::PendingAdmin);
     }
 }
 

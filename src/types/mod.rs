@@ -127,6 +127,8 @@ pub enum Event {
     SettlementFinalized(SorobanString, SorobanString, i128), // (settlement_id, asset_code, total)
     AssetAdded(SorobanString),
     AssetRemoved(SorobanString),
+    AdminTransferProposed(Address, Address), // (current_admin, proposed_admin)
+    AdminTransferred(Address, Address),      // (old_admin, new_admin)
 }
 
 fn generate_id(env: &Env) -> SorobanString {
