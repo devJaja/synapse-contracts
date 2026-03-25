@@ -1,3 +1,4 @@
+use alloc::format;
 use soroban_sdk::{contracttype, Address, Env, String as SorobanString, Vec};
 extern crate alloc;
 use alloc::format;
@@ -12,7 +13,7 @@ pub const MAX_RETRIES: u32 = 5;
 // TODO(#50): store `relayer: Address` on Transaction (who registered it)
 
 #[contracttype]
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TransactionStatus {
     Pending,
     Processing,
@@ -26,12 +27,15 @@ pub struct Transaction {
     pub id: SorobanString,
     pub anchor_transaction_id: SorobanString,
     pub stellar_account: Address,
+    pub relayer: Address, // #50: who registered this deposit
     pub amount: i128,
     pub asset_code: SorobanString,
     pub status: TransactionStatus,
     pub created_ledger: u32,
     pub updated_ledger: u32,
     pub settlement_id: SorobanString, // empty = unsettled
+    pub memo: Option<SorobanString>,
+    pub memo_type: Option<SorobanString>,
     pub callback_type: Option<SorobanString>,
 }
 
@@ -40,15 +44,17 @@ impl Transaction {
         env: &Env,
         anchor_transaction_id: SorobanString,
         stellar_account: Address,
+        relayer: Address,
         amount: i128,
         asset_code: SorobanString,
         memo: Option<SorobanString>,
     ) -> Self {
         let ledger = env.ledger().sequence();
         Self {
-            id: generate_id(env),
+            id: generate_id(env, &anchor_transaction_id),
             anchor_transaction_id,
             stellar_account,
+            relayer,
             amount,
             asset_code,
             status: TransactionStatus::Pending,
@@ -56,6 +62,7 @@ impl Transaction {
             updated_ledger: ledger,
             settlement_id: SorobanString::from_str(env, ""),
             memo,
+            memo_type: None,
             callback_type: None,
         }
     }
@@ -83,7 +90,7 @@ impl Settlement {
         period_end: u64,
     ) -> Self {
         Self {
-            id: generate_id(env),
+            id: generate_settlement_id(env),
             asset_code,
             tx_ids,
             total_amount,
@@ -118,46 +125,38 @@ impl DlqEntry {
 
 /// Contract events — one variant per state change.
 // TODO(#51): add `RelayerGranted(Address)` variant
-// TODO(#52): add `RelayerRevoked(Address)` variant
+// TODO(#53): add `Initialized(Address)` variant
 // TODO(#54): add `ContractPaused` / `ContractUnpaused` variants
 // TODO(#56): add `MaxRetriesExceeded(SorobanString)` variant
 // TODO(#57): add `AdminTransferred(Address, Address)` variant
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Event {
     Initialized(Address),                                    // (admin)
     DepositRegistered(SorobanString, SorobanString),         // (tx_id, anchor_id)
     StatusUpdated(SorobanString, TransactionStatus),         // (tx_id, new_status)
     MovedToDlq(SorobanString, SorobanString),                // (tx_id, error_reason)
-    DepositRegistered(SorobanString, SorobanString), // (tx_id, anchor_id)
-    StatusUpdated(SorobanString, TransactionStatus),  // (tx_id, new_status)
-    MovedToDlq(SorobanString, SorobanString),         // (tx_id, error_reason)
-    DlqRetried(SorobanString),                        // (tx_id)
+    DlqRetried(SorobanString),                               // (tx_id)
     SettlementFinalized(SorobanString, SorobanString, i128), // (settlement_id, asset_code, total)
     AssetAdded(SorobanString),
     AssetRemoved(SorobanString),
-    DlqRetried(SorobanString),
-    MaxRetriesExceeded(SorobanString),
+    RelayerRevoked(Address),
 }
 
 fn generate_id(env: &Env) -> SorobanString {
     let ts = env.ledger().timestamp();
-    let seq = env.ledger().sequence() as u64;
-    let combined = ts * 1_000_000 + seq;
-    // Format combined u64 as decimal string without std::format!
-    let mut buf = [0u8; 20]; // max u64 is 20 digits
-    let mut n = combined;
-    let mut i = buf.len();
-    if n == 0 {
-        i -= 1;
-        buf[i] = b'0';
-    } else {
-        while n > 0 {
-            i -= 1;
-            buf[i] = b'0' + (n % 10) as u8;
-            n /= 10;
-        }
+    let seq = env.ledger().sequence();
+    let mut data = [0u8; 12];
+    data[..8].copy_from_slice(&ts.to_be_bytes());
+    data[8..12].copy_from_slice(&seq.to_be_bytes());
+    let hash = env.crypto().sha256(&soroban_sdk::Bytes::from_slice(env, &data));
+    let bytes = hash.to_array();
+    // encode first 16 bytes as 32-char hex
+    let mut hex = [0u8; 32];
+    const HEX: &[u8] = b"0123456789abcdef";
+    for i in 0..16 {
+        hex[i * 2]     = HEX[(bytes[i] >> 4) as usize];
+        hex[i * 2 + 1] = HEX[(bytes[i] & 0xf) as usize];
     }
-    let s = core::str::from_utf8(&buf[i..]).unwrap_or("0");
-    SorobanString::from_str(env, s)
+    SorobanString::from_bytes(env, &hex)
 }
