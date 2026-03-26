@@ -116,6 +116,14 @@ pub mod deposits {
         env.storage()
             .persistent()
             .extend_ttl(&key, TX_TTL_THRESHOLD, TX_TTL_EXTEND_TO);
+
+        // Also bump the anchor index TTL to keep them in sync
+        let anchor_key = StorageKey::AnchorIdx(tx.anchor_transaction_id.clone());
+        if env.storage().persistent().has(&anchor_key) {
+            env.storage()
+                .persistent()
+                .extend_ttl(&anchor_key, TX_TTL_THRESHOLD, TX_TTL_EXTEND_TO);
+        }
     }
     pub fn get(env: &Env, id: &SorobanString) -> Transaction {
         env.storage()
@@ -124,9 +132,11 @@ pub mod deposits {
             .expect("tx not found")
     }
     pub fn index_anchor_id(env: &Env, anchor_id: &SorobanString, tx_id: &SorobanString) {
+        let key = StorageKey::AnchorIdx(anchor_id.clone());
+        env.storage().persistent().set(&key, tx_id);
         env.storage()
             .persistent()
-            .set(&StorageKey::AnchorIdx(anchor_id.clone()), tx_id);
+            .extend_ttl(&key, TX_TTL_THRESHOLD, TX_TTL_EXTEND_TO);
     }
     pub fn find_by_anchor_id(env: &Env, anchor_id: &SorobanString) -> Option<SorobanString> {
         env.storage()
