@@ -308,6 +308,10 @@ impl SynapseContract {
         relayers::has(&env, &address)
     }
 
+    pub fn is_paused(env: Env) -> bool {
+        storage::pause::is_paused(&env)
+    }
+
 }
 
 #[cfg(test)]

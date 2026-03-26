@@ -85,9 +85,9 @@ fn pause_and_unpause() {
     let env = Env::default();
     let (admin, _, client) = setup(&env);
     client.pause(&admin);
-    // TODO(#42): assert client.is_paused() == true
+    assert!(client.is_paused());
     client.unpause(&admin);
-    // TODO(#42): assert client.is_paused() == false
+    assert!(!client.is_paused());
 }
 
 #[test]
