@@ -638,4 +638,102 @@ mod tests {
             &2u64,
         );
     }
+
+    #[test]
+    fn test_finalize_settlement_emits_settled_event_per_transaction() {
+        let env = Env::default();
+        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "settled-event-single");
+
+        let settlement_id = client.finalize_settlement(
+            &relayer,
+            &SorobanString::from_str(&env, "USD"),
+            &vec![&env, tx_id.clone()],
+            &1i128,
+            &0u64,
+            &1u64,
+        );
+
+        // Expect: DepositRegistered + Settled(tx_id, settlement_id) + SettlementFinalized
+        // We care that exactly one Settled event was emitted with the right payload.
+        let events = env.events().all();
+        let settled_events: soroban_sdk::Vec<_> = events
+            .iter()
+            .filter(|(_, _, data)| {
+                matches!(
+                    data.clone().try_into_val::<_, Event>(&env),
+                    Ok(Event::Settled(_, _))
+                )
+            })
+            .collect::<std::vec::Vec<_>>()
+            .into_iter()
+            .collect();
+
+        assert_eq!(settled_events.len(), 1);
+        let (_, _, data) = settled_events.get(0).unwrap();
+        let event: Event = data.try_into_val(&env).unwrap();
+        assert_eq!(event, Event::Settled(tx_id, settlement_id));
+    }
+
+    #[test]
+    fn test_finalize_settlement_emits_one_settled_event_per_tx_in_batch() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let relayer = Address::generate(&env);
+        let stellar = Address::generate(&env);
+        let asset = SorobanString::from_str(&env, "USD");
+
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &asset);
+
+        // Register 3 deposits
+        let tx1 = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "batch-anchor-1"),
+            &stellar,
+            &10i128,
+            &asset,
+            &None,
+        );
+        let tx2 = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "batch-anchor-2"),
+            &stellar,
+            &20i128,
+            &asset,
+            &None,
+        );
+        let tx3 = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "batch-anchor-3"),
+            &stellar,
+            &30i128,
+            &asset,
+            &None,
+        );
+
+        let settlement_id = client.finalize_settlement(
+            &relayer,
+            &asset,
+            &vec![&env, tx1.clone(), tx2.clone(), tx3.clone()],
+            &60i128,
+            &0u64,
+            &1u64,
+        );
+
+        // Collect all Settled events
+        let settled: alloc::vec::Vec<Event> = env
+            .events()
+            .all()
+            .iter()
+            .filter_map(|(_, _, data)| {
+                data.try_into_val::<_, Event>(&env).ok().filter(|e| matches!(e, Event::Settled(_, _)))
+            })
+            .collect();
+
+        assert_eq!(settled.len(), 3);
+        assert!(settled.contains(&Event::Settled(tx1, settlement_id.clone())));
+        assert!(settled.contains(&Event::Settled(tx2, settlement_id.clone())));
+        assert!(settled.contains(&Event::Settled(tx3, settlement_id)));
+    }
 }
