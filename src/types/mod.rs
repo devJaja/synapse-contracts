@@ -1,16 +1,10 @@
 use alloc::format;
 use soroban_sdk::{contracttype, Address, Env, String as SorobanString, Vec};
-extern crate alloc;
-use alloc::format;
 
 // TODO(#45): replace generate_id with hash(anchor_transaction_id) for determinism
 
 pub const MAX_RETRIES: u32 = 5;
 // TODO(#46): add `Cancelled` status for user-initiated cancellations
-// TODO(#47): add `memo: Option<SorobanString>` field to Transaction
-// TODO(#48): add `memo_type: Option<SorobanString>` field to Transaction
-// TODO(#49): add `callback_type: Option<SorobanString>` field to Transaction
-// TODO(#50): store `relayer: Address` on Transaction (who registered it)
 
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
@@ -30,6 +24,7 @@ pub struct Transaction {
     pub relayer: Address, // #50: who registered this deposit
     pub amount: i128,
     pub asset_code: SorobanString,
+    pub memo: Option<SorobanString>,
     pub status: TransactionStatus,
     pub created_ledger: u32,
     pub updated_ledger: u32,
@@ -58,6 +53,7 @@ impl Transaction {
             relayer,
             amount,
             asset_code,
+            memo,
             status: TransactionStatus::Pending,
             created_ledger: ledger,
             updated_ledger: ledger,

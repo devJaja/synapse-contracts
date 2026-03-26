@@ -80,7 +80,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "memo-on-tx"
+                  "string": "memo-none"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
@@ -124,7 +124,7 @@
                   "symbol": "AnchorIdx"
                 },
                 {
-                  "string": "memo-on-tx"
+                  "string": "memo-none"
                 }
               ]
             },
@@ -144,7 +144,7 @@
                       "symbol": "AnchorIdx"
                     },
                     {
-                      "string": "memo-on-tx"
+                      "string": "memo-none"
                     }
                   ]
                 },
@@ -212,7 +212,7 @@
                         "symbol": "anchor_transaction_id"
                       },
                       "val": {
-                        "string": "memo-on-tx"
+                        "string": "memo-none"
                       }
                     },
                     {
@@ -774,7 +774,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "memo-on-tx"
+                  "string": "memo-none"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
@@ -817,7 +817,7 @@
                   "string": "0"
                 },
                 {
-                  "string": "memo-on-tx"
+                  "string": "memo-none"
                 }
               ]
             }
@@ -908,7 +908,7 @@
                     "symbol": "anchor_transaction_id"
                   },
                   "val": {
-                    "string": "memo-on-tx"
+                    "string": "memo-none"
                   }
                 },
                 {
