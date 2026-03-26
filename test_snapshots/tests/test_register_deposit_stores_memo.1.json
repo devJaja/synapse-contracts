@@ -96,7 +96,8 @@
                 },
                 {
                   "string": "test-memo"
-                }
+                },
+                "void"
               ]
             }
           },
@@ -786,7 +787,8 @@
                 },
                 {
                   "string": "test-memo"
-                }
+                },
+                "void"
               ]
             }
           }

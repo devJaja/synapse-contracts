@@ -80,7 +80,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "relayer-on-tx"
+                  "string": "mt-none"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
@@ -125,7 +125,7 @@
                   "symbol": "AnchorIdx"
                 },
                 {
-                  "string": "relayer-on-tx"
+                  "string": "mt-none"
                 }
               ]
             },
@@ -145,7 +145,7 @@
                       "symbol": "AnchorIdx"
                     },
                     {
-                      "string": "relayer-on-tx"
+                      "string": "mt-none"
                     }
                   ]
                 },
@@ -157,7 +157,7 @@
             },
             "ext": "v0"
           },
-          4095
+          172800
         ]
       ],
       [
@@ -213,7 +213,7 @@
                         "symbol": "anchor_transaction_id"
                       },
                       "val": {
-                        "string": "relayer-on-tx"
+                        "string": "mt-none"
                       }
                     },
                     {
@@ -223,12 +223,6 @@
                       "val": {
                         "string": "USD"
                       }
-                    },
-                    {
-                      "key": {
-                        "symbol": "callback_type"
-                      },
-                      "val": "void"
                     },
                     {
                       "key": {
@@ -257,6 +251,14 @@
                         "symbol": "memo_type"
                       },
                       "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "relayer"
+                      },
+                      "val": {
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                      }
                     },
                     {
                       "key": {
@@ -351,6 +353,18 @@
                         },
                         "val": {
                           "bool": true
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "AssetCount"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u32": 1
                         }
                       },
                       {
@@ -767,7 +781,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "relayer-on-tx"
+                  "string": "mt-none"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
@@ -811,7 +825,7 @@
                   "string": "0"
                 },
                 {
-                  "string": "relayer-on-tx"
+                  "string": "mt-none"
                 }
               ]
             }
@@ -902,7 +916,7 @@
                     "symbol": "anchor_transaction_id"
                   },
                   "val": {
-                    "string": "relayer-on-tx"
+                    "string": "mt-none"
                   }
                 },
                 {
@@ -912,12 +926,6 @@
                   "val": {
                     "string": "USD"
                   }
-                },
-                {
-                  "key": {
-                    "symbol": "callback_type"
-                  },
-                  "val": "void"
                 },
                 {
                   "key": {
@@ -946,6 +954,14 @@
                     "symbol": "memo_type"
                   },
                   "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "relayer"
+                  },
+                  "val": {
+                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                  }
                 },
                 {
                   "key": {
