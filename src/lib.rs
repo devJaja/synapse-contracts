@@ -64,11 +64,10 @@ impl SynapseContract {
         storage::admin::set(&env, &new_admin);
     }
 
-    // TODO(#9): emit `ContractPaused` event
-    // TODO(#10): block all state-mutating calls when paused
     pub fn pause(env: Env, caller: Address) {
         require_admin(&env, &caller);
         storage::pause::set(&env, true);
+        emit(&env, Event::ContractPaused);
     }
 
     pub fn unpause(env: Env, caller: Address) {
@@ -587,6 +586,20 @@ mod tests {
         assert!(settlement_id.len() > 0);
         let s = client.get_settlement(&settlement_id);
         assert_eq!(s.total_amount, 100i128);
+    }
+
+    #[test]
+    fn test_pause_emits_contract_paused_event() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+
+        client.pause(&admin);
+        let events = env.events().all();
+        assert_eq!(events.len(), 2); // initialize + pause
+        let (emitting_contract, topics, _data) = events.get(1).unwrap();
+        assert_eq!(emitting_contract, contract_id);
+        assert_eq!(topics, (symbol_short!("synapse"),).into_val(&env));
     }
 
     #[test]

@@ -130,6 +130,7 @@ pub enum Event {
     AssetRemoved(SorobanString),
     RelayerGranted(Address),
     RelayerRevoked(Address),
+    ContractPaused,
     ContractUnpaused,
 }
 
