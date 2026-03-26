@@ -98,6 +98,16 @@ pub mod assets {
     }
 }
 
+pub mod min_deposit {
+    use super::*;
+    pub fn get(env: &Env) -> Option<i128> {
+        env.storage().instance().get(&StorageKey::MinDeposit)
+    }
+    pub fn set(env: &Env, amount: &i128) {
+        env.storage().instance().set(&StorageKey::MinDeposit, amount);
+    }
+}
+
 pub mod max_deposit {
     use super::*;
     pub fn get(env: &Env) -> Option<i128> {

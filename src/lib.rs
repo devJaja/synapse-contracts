@@ -10,7 +10,7 @@ pub mod types;
 use access::{require_admin, require_not_paused, require_relayer};
 use events::emit;
 use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
-use storage::{assets, deposits, dlq, max_deposit, relayers, settlements};
+use storage::{assets, deposits, dlq, max_deposit, min_deposit, relayers, settlements};
 use types::{DlqEntry, Event, Settlement, Transaction, TransactionStatus};
 
 #[contract]
@@ -94,6 +94,16 @@ impl SynapseContract {
         emit(&env, Event::AssetRemoved(asset_code));
     }
 
+    pub fn set_min_deposit(env: Env, caller: Address, amount: i128) {
+        require_admin(&env, &caller);
+        if amount <= 0 { panic!("min deposit must be positive") }
+        min_deposit::set(&env, &amount);
+    }
+
+    pub fn get_min_deposit(env: Env) -> Option<i128> {
+        min_deposit::get(&env)
+    }
+
     pub fn set_max_deposit(env: Env, caller: Address, amount: i128) {
         require_admin(&env, &caller);
         if amount <= 0 { panic!("max deposit must be positive") }
@@ -104,7 +114,6 @@ impl SynapseContract {
         max_deposit::get(&env)
     }
 
-    // TODO(#15): enforce minimum deposit amount (configurable by admin)
     // TODO(#16): enforce maximum deposit amount (configurable by admin) — DONE
     // TODO(#17): validate anchor_transaction_id is non-empty
     // TODO(#18): add `memo` field support (mirrors synapse-core CallbackPayload)
@@ -123,6 +132,10 @@ impl SynapseContract {
         require_not_paused(&env);
         require_relayer(&env, &caller);
         assets::require_allowed(&env, &asset_code);
+
+        if let Some(min) = min_deposit::get(&env) {
+            if amount < min { panic!("amount below min deposit") }
+        }
 
         if let Some(max) = max_deposit::get(&env) {
             if amount > max { panic!("amount exceeds max deposit") }
@@ -271,7 +284,7 @@ impl SynapseContract {
 
     // TODO(#40): add `get_dlq_entry(tx_id)` query
     // TODO(#41): add `get_admin()` query
-    // TODO(#43): add `get_min_deposit()` query
+    // TODO(#43): add `get_min_deposit()` query — DONE
     // TODO(#44): add `get_max_deposit()` query — DONE
 
     pub fn get_admin(env: Env) -> Address {
@@ -494,6 +507,49 @@ mod tests {
             &0i128,
             &2u64,
             &1u64,
+        );
+    }
+
+    #[test]
+    fn test_min_deposit() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+
+        // Not set yet — should return None
+        assert_eq!(client.get_min_deposit(), None);
+
+        // Set to 100
+        client.set_min_deposit(&admin, &100i128);
+        assert_eq!(client.get_min_deposit(), Some(100i128));
+
+        // Update to 500
+        client.set_min_deposit(&admin, &500i128);
+        assert_eq!(client.get_min_deposit(), Some(500i128));
+    }
+
+    #[test]
+    #[should_panic(expected = "amount below min deposit")]
+    fn test_register_deposit_panics_when_below_min() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let relayer = Address::generate(&env);
+        let stellar = Address::generate(&env);
+        let asset = SorobanString::from_str(&env, "USD");
+
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &asset);
+        client.set_min_deposit(&admin, &50i128);
+
+        // amount 10 < min 50 — should panic
+        client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "below-min-anchor"),
+            &stellar,
+            &10i128,
+            &asset,
+            &None,
         );
     }
 
