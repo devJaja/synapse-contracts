@@ -101,6 +101,12 @@ impl SynapseContract {
         require_relayer(&env, &caller);
         assets::require_allowed(&env, &asset_code);
 
+        // Enforce minimum deposit amount
+        let min_deposit = storage::min_deposit::get(&env);
+        if amount < min_deposit {
+            panic!("deposit amount below minimum")
+        }
+
         if let Some(existing) = deposits::find_by_anchor_id(&env, &anchor_transaction_id) {
             return existing;
         }
@@ -109,12 +115,10 @@ impl SynapseContract {
             &env,
             anchor_transaction_id.clone(),
             stellar_account,
-            caller,
             amount,
             asset_code,
             memo,
         );
-        let tx = Transaction::new(&env, anchor_transaction_id.clone(), stellar_account, amount, asset_code);
         let id = tx.id.clone();
         deposits::save(&env, &tx);
         deposits::index_anchor_id(&env, &anchor_transaction_id, &id);
@@ -193,7 +197,6 @@ impl SynapseContract {
     }
 
     // TODO(#33): verify each tx_id exists and has status Completed
-        let entry = dlq::get(&env, &tx_id).expect("DLQ entry not found");\n        let mut new_entry = entry.clone();\n        new_entry.retry_count += 1;\n        new_entry.last_retry_ledger = env.ledger().sequence();\n        if new_entry.retry_count > types::MAX_RETRIES {\n            emit(&env, Event::MaxRetriesExceeded(tx_id.clone()));\n            panic!("MaxRetriesExceeded");\n        }\n        let mut tx = deposits::get(&env, &tx_id);\n        tx.status = TransactionStatus::Pending;\n        tx.updated_ledger = env.ledger().sequence();\n        deposits::save(&env, &tx);\n        dlq::remove(&env, &tx_id);\n        emit(&env, Event::DlqRetried(tx_id));\n    }\n\n    // TODO(#33): verify each tx_id exists and has status Completed
     // TODO(#34): verify no tx_id is already linked to a settlement
     // TODO(#35): write settlement_id back onto each Transaction
     // TODO(#36): verify total_amount matches sum of tx amounts on-chain
@@ -224,7 +227,6 @@ impl SynapseContract {
             i += 1;
         }
         let s = Settlement::new(&env, asset_code.clone(), tx_ids, total_amount, period_start, period_end);
-        let s = Settlement::new(&env, asset_code.clone(), tx_ids.clone(), total_amount, period_start, period_end);
         let id = s.id.clone();
         settlements::save(&env, &s);
         for tx_id in tx_ids.iter() {
@@ -233,20 +235,6 @@ impl SynapseContract {
             deposits::save(&env, &tx);
         }
         emit(&env, Event::SettlementFinalized(id.clone(), asset_code, total_amount));
-        let s = Settlement::new(
-            &env,
-            asset_code.clone(),
-            tx_ids,
-            total_amount,
-            period_start,
-            period_end,
-        );
-        let id = s.id.clone();
-        settlements::save(&env, &s);
-        emit(
-            &env,
-            Event::SettlementFinalized(id.clone(), asset_code, total_amount),
-        );
         id
     }
 
@@ -279,13 +267,22 @@ impl SynapseContract {
         relayers::has(&env, &address)
     }
 
+    pub fn set_min_deposit(env: Env, caller: Address, amount: i128) {
+        require_admin(&env, &caller);
+        storage::min_deposit::set(&env, &amount);
+    }
+
+    pub fn get_min_deposit(env: Env) -> i128 {
+        storage::min_deposit::get(&env)
+    }
+
     pub fn set_max_deposit(env: Env, caller: Address, amount: i128) {
         require_admin(&env, &caller);
-        max_deposit::set(&env, &amount);
+        storage::max_deposit::set(&env, &amount);
     }
 
     pub fn get_max_deposit(env: Env) -> i128 {
-        max_deposit::get(&env)
+        storage::max_deposit::get(&env)
     }
 }
 
@@ -472,6 +469,9 @@ mod tests {
         let (admin, contract_id) = setup(&env);
         let client = SynapseContractClient::new(&env, &contract_id);
         let relayer = Address::generate(&env);
+        let stellar = Address::generate(&env);
+        let asset = SorobanString::from_str(&env, "USD");
+        let anchor_id = SorobanString::from_str(&env, "period-test");
 
         client.grant_relayer(&admin, &relayer);
         client.add_asset(&admin, &asset);
@@ -484,22 +484,12 @@ mod tests {
             &asset,
             &None,
         );
-        let tx_id = client.register_deposit(&relayer, &anchor_id, &stellar, &100i128, &asset);
 
-        let anchor_key = StorageKey::AnchorIdx(anchor_id);
-        let tx_key = StorageKey::Tx(tx_id);
-        let (ttl_anchor, ttl_tx) = env.as_contract(&contract_id, || {
-            let p = env.storage().persistent();
-            (p.get_ttl(&anchor_key), p.get_ttl(&tx_key))
-        });
-        assert_eq!(
-            ttl_anchor, ttl_tx,
-            "AnchorIdx TTL should match Tx after register_deposit (both extended)"
         client.finalize_settlement(
             &relayer,
             &SorobanString::from_str(&env, "USD"),
-            &vec![&env],
-            &0i128,
+            &vec![&env, tx_id],
+            &100i128,
             &2u64,
             &1u64,
         );
@@ -544,8 +534,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "period_start must be <= period_end")]
-    fn test_finalize_settlement_panics_when_period_start_exceeds_period_end() {
     fn test_retry_dlq_success() {
         let env = Env::default();
         let (client, relayer, tx_id) = setup_relayer_deposit(&env, "retry-tx");
@@ -667,5 +655,152 @@ mod tests {
             &1u64,
             &2u64,
         );
+    }
+
+    // Minimum deposit tests
+    #[test]
+    fn test_get_min_deposit_default() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        
+        // Default should be 0
+        assert_eq!(client.get_min_deposit(), 0i128);
+    }
+
+    #[test]
+    fn test_set_min_deposit() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+
+        // Set to 100
+        client.set_min_deposit(&admin, &100i128);
+        assert_eq!(client.get_min_deposit(), 100i128);
+
+        // Set to 500
+        client.set_min_deposit(&admin, &500i128);
+        assert_eq!(client.get_min_deposit(), 500i128);
+    }
+
+    #[test]
+    #[should_panic(expected = "deposit amount below minimum")]
+    fn test_register_deposit_rejects_below_minimum() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let relayer = Address::generate(&env);
+        let stellar = Address::generate(&env);
+        let asset = SorobanString::from_str(&env, "USD");
+        let anchor_id = SorobanString::from_str(&env, "below-min");
+
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &asset);
+        
+        // Set minimum deposit to 100
+        client.set_min_deposit(&admin, &100i128);
+        
+        // Try to register a deposit below minimum (50 < 100)
+        client.register_deposit(
+            &relayer,
+            &anchor_id,
+            &stellar,
+            &50i128,
+            &asset,
+            &None,
+        );
+    }
+
+    #[test]
+    fn test_register_deposit_accepts_at_minimum() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let relayer = Address::generate(&env);
+        let stellar = Address::generate(&env);
+        let asset = SorobanString::from_str(&env, "USD");
+        let anchor_id = SorobanString::from_str(&env, "at-min");
+
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &asset);
+        
+        // Set minimum deposit to 100
+        client.set_min_deposit(&admin, &100i128);
+        
+        // Register a deposit at minimum (100 == 100)
+        let tx_id = client.register_deposit(
+            &relayer,
+            &anchor_id,
+            &stellar,
+            &100i128,
+            &asset,
+            &None,
+        );
+        
+        // Should succeed
+        let tx = client.get_transaction(&tx_id);
+        assert_eq!(tx.amount, 100i128);
+    }
+
+    #[test]
+    fn test_register_deposit_accepts_above_minimum() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let relayer = Address::generate(&env);
+        let stellar = Address::generate(&env);
+        let asset = SorobanString::from_str(&env, "USD");
+        let anchor_id = SorobanString::from_str(&env, "above-min");
+
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &asset);
+        
+        // Set minimum deposit to 100
+        client.set_min_deposit(&admin, &100i128);
+        
+        // Register a deposit above minimum (200 > 100)
+        let tx_id = client.register_deposit(
+            &relayer,
+            &anchor_id,
+            &stellar,
+            &200i128,
+            &asset,
+            &None,
+        );
+        
+        // Should succeed
+        let tx = client.get_transaction(&tx_id);
+        assert_eq!(tx.amount, 200i128);
+    }
+
+    #[test]
+    fn test_register_deposit_works_with_zero_minimum() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let relayer = Address::generate(&env);
+        let stellar = Address::generate(&env);
+        let asset = SorobanString::from_str(&env, "USD");
+        let anchor_id = SorobanString::from_str(&env, "zero-min");
+
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &asset);
+        
+        // Set minimum deposit to 0 (default)
+        client.set_min_deposit(&admin, &0i128);
+        
+        // Register a deposit of 1 (should work with 0 minimum)
+        let tx_id = client.register_deposit(
+            &relayer,
+            &anchor_id,
+            &stellar,
+            &1i128,
+            &asset,
+            &None,
+        );
+        
+        // Should succeed
+        let tx = client.get_transaction(&tx_id);
+        assert_eq!(tx.amount, 1i128);
     }
 }
