@@ -194,7 +194,6 @@ impl SynapseContract {
     }
 
     // TODO(#29): increment retry_count on DlqEntry
-    // TODO(#31): emit `DlqRetried` event
     pub fn retry_dlq(env: Env, caller: Address, tx_id: SorobanString) {
         require_not_paused(&env);
         let mut tx = deposits::get(&env, &tx_id);
@@ -213,7 +212,8 @@ impl SynapseContract {
         deposits::save(&env, &tx);
         dlq::remove(&env, &tx_id);
 
-        emit(&env, Event::StatusUpdated(tx_id, TransactionStatus::Pending));
+        emit(&env, Event::StatusUpdated(tx_id.clone(), TransactionStatus::Pending));
+        emit(&env, Event::DlqRetried(tx_id));
     }
     // TODO(#34): verify no tx_id is already linked to a settlement
     // TODO(#36): verify total_amount matches sum of tx amounts on-chain
@@ -561,6 +561,13 @@ mod tests {
             storage::dlq::get(&env, &tx_id)
         });
         assert!(entry.is_none());
+
+        // 5. Verify Events
+        let events = env.events().all();
+        let last_event = events.last().unwrap();
+        assert_eq!(last_event.1, (symbol_short!("synapse"),).into_val(&env));
+        let event_data: Event = last_event.2.into_val(&env);
+        assert_eq!(event_data, Event::DlqRetried(tx_id));
     }
 
     #[test]
