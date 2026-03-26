@@ -80,7 +80,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "anchor-tx-ttl-1"
+                  "string": "ttl-anchor"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
@@ -88,12 +88,13 @@
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 100
+                    "lo": 1
                   }
                 },
                 {
                   "string": "USD"
                 },
+                "void",
                 "void"
               ]
             }
@@ -124,7 +125,7 @@
                   "symbol": "AnchorIdx"
                 },
                 {
-                  "string": "anchor-tx-ttl-1"
+                  "string": "ttl-anchor"
                 }
               ]
             },
@@ -144,7 +145,7 @@
                       "symbol": "AnchorIdx"
                     },
                     {
-                      "string": "anchor-tx-ttl-1"
+                      "string": "ttl-anchor"
                     }
                   ]
                 },
@@ -203,7 +204,7 @@
                       "val": {
                         "i128": {
                           "hi": 0,
-                          "lo": 100
+                          "lo": 1
                         }
                       }
                     },
@@ -212,7 +213,7 @@
                         "symbol": "anchor_transaction_id"
                       },
                       "val": {
-                        "string": "anchor-tx-ttl-1"
+                        "string": "ttl-anchor"
                       }
                     },
                     {
@@ -242,6 +243,12 @@
                     {
                       "key": {
                         "symbol": "memo"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "memo_type"
                       },
                       "val": "void"
                     },
@@ -774,7 +781,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "anchor-tx-ttl-1"
+                  "string": "ttl-anchor"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
@@ -782,12 +789,13 @@
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 100
+                    "lo": 1
                   }
                 },
                 {
                   "string": "USD"
                 },
+                "void",
                 "void"
               ]
             }
@@ -817,7 +825,7 @@
                   "string": "0"
                 },
                 {
-                  "string": "anchor-tx-ttl-1"
+                  "string": "ttl-anchor"
                 }
               ]
             }

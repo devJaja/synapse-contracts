@@ -1,5 +1,3 @@
-extern crate alloc;
-
 use alloc::format;
 use soroban_sdk::{contracttype, Address, Env, String as SorobanString, Vec};
 
@@ -7,10 +5,6 @@ use soroban_sdk::{contracttype, Address, Env, String as SorobanString, Vec};
 
 pub const MAX_RETRIES: u32 = 5;
 // TODO(#46): add `Cancelled` status for user-initiated cancellations
-// TODO(#47): add `memo: Option<SorobanString>` field to Transaction
-// TODO(#48): add `memo_type: Option<SorobanString>` field to Transaction
-// TODO(#49): add `callback_type: Option<SorobanString>` field to Transaction
-// TODO(#50): store `relayer: Address` on Transaction (who registered it)
 
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
@@ -19,6 +13,7 @@ pub enum TransactionStatus {
     Processing,
     Completed,
     Failed,
+    Cancelled,
 }
 
 #[contracttype]
@@ -30,6 +25,7 @@ pub struct Transaction {
     pub relayer: Address,
     pub amount: i128,
     pub asset_code: SorobanString,
+    pub memo: Option<SorobanString>,
     pub status: TransactionStatus,
     pub created_ledger: u32,
     pub updated_ledger: u32,
@@ -47,7 +43,9 @@ impl Transaction {
         relayer: Address,
         amount: i128,
         asset_code: SorobanString,
+        callback_type: Option<SorobanString>,
         memo: Option<SorobanString>,
+        memo_type: Option<SorobanString>,
     ) -> Self {
         let ledger = env.ledger().sequence();
         Self {
@@ -57,10 +55,12 @@ impl Transaction {
             relayer,
             amount,
             asset_code,
+            memo,
             status: TransactionStatus::Pending,
             created_ledger: ledger,
             updated_ledger: ledger,
             settlement_id: SorobanString::from_str(env, ""),
+            callback_type,
             memo,
             memo_type: None,
             callback_type: None,
@@ -125,20 +125,28 @@ impl DlqEntry {
 
 /// Contract events - one variant per state change.
 // TODO(#54): add `ContractPaused` / `ContractUnpaused` variants
+// TODO(#55): add `DlqRetried(SorobanString)` variant
 // TODO(#56): add `MaxRetriesExceeded(SorobanString)` variant
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
-    Initialized(Address),
-    AdminTransferred(Address, Address),
-    RelayerGranted(Address),
-    RelayerRevoked(Address),
-    DepositRegistered(SorobanString, SorobanString),
-    StatusUpdated(SorobanString, TransactionStatus),
-    MovedToDlq(SorobanString, SorobanString),
-    DlqRetried(SorobanString),
-    Settled(SorobanString, SorobanString),
-    SettlementFinalized(SorobanString, SorobanString, i128),
+    // Lifecycle
+    Initialized(Address),                                    // (admin)
+
+    // Relayer management
+    RelayerGranted(Address),                                 // (relayer)
+    DepositRegistered(SorobanString, SorobanString),         // (tx_id, anchor_id)
+    StatusUpdated(SorobanString, TransactionStatus),         // (tx_id, new_status)
+    SettlementFinalized(SorobanString, SorobanString, i128), // (settlement_id, asset_code, total)
+
+    // Pause
+    ContractPaused(Address),                                 // (admin)
+    ContractUnpaused(Address),                               // (admin)
+
+    // DLQ
+    MovedToDlq(SorobanString, SorobanString),                // (tx_id, error_reason)
+    DlqRetried(SorobanString),                               // (tx_id)
+    SettlementFinalized(SorobanString, SorobanString, i128), // (settlement_id, asset_code, total)
     AssetAdded(SorobanString),
     AssetRemoved(SorobanString),
 }

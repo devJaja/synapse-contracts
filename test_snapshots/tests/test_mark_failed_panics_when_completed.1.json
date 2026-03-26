@@ -94,6 +94,7 @@
                 {
                   "string": "USD"
                 },
+                "void",
                 "void"
               ]
             }
@@ -220,6 +221,92 @@
                 "durability": "persistent",
                 "val": {
                   "string": "0"
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          4095
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Dlq"
+                },
+                {
+                  "string": "0"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Dlq"
+                    },
+                    {
+                      "string": "0"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "error_reason"
+                      },
+                      "val": {
+                        "string": "late-fail"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "last_retry_ledger"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "moved_at_ledger"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "retry_count"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "tx_id"
+                      },
+                      "val": {
+                        "string": "0"
+                      }
+                    }
+                  ]
                 }
               }
             },
@@ -1034,6 +1121,7 @@
                 {
                   "string": "USD"
                 },
+                "void",
                 "void"
               ]
             }

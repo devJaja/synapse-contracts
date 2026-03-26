@@ -102,7 +102,6 @@
         }
       ]
     ],
-    [],
     [
       [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
@@ -119,7 +118,7 @@
                   "string": "0"
                 },
                 {
-                  "string": "failed-initially"
+                  "string": "err"
                 }
               ]
             }
@@ -128,7 +127,6 @@
         }
       ]
     ],
-    [],
     [
       [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
@@ -251,7 +249,7 @@
                         "symbol": "error_reason"
                       },
                       "val": {
-                        "string": "failed-initially"
+                        "string": "err"
                       }
                     },
                     {
@@ -1070,7 +1068,7 @@
                   "string": "0"
                 },
                 {
-                  "string": "failed-initially"
+                  "string": "err"
                 }
               ]
             }
@@ -1100,7 +1098,7 @@
                   "string": "0"
                 },
                 {
-                  "string": "failed-initially"
+                  "string": "err"
                 }
               ]
             }

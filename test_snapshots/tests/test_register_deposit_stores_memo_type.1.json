@@ -80,7 +80,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "relayer-on-tx"
+                  "string": "mt-stored"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
@@ -95,7 +95,9 @@
                   "string": "USD"
                 },
                 "void",
-                "void"
+                {
+                  "string": "text"
+                }
               ]
             }
           },
@@ -125,7 +127,7 @@
                   "symbol": "AnchorIdx"
                 },
                 {
-                  "string": "relayer-on-tx"
+                  "string": "mt-stored"
                 }
               ]
             },
@@ -145,7 +147,7 @@
                       "symbol": "AnchorIdx"
                     },
                     {
-                      "string": "relayer-on-tx"
+                      "string": "mt-stored"
                     }
                   ]
                 },
@@ -157,7 +159,7 @@
             },
             "ext": "v0"
           },
-          4095
+          172800
         ]
       ],
       [
@@ -213,7 +215,7 @@
                         "symbol": "anchor_transaction_id"
                       },
                       "val": {
-                        "string": "relayer-on-tx"
+                        "string": "mt-stored"
                       }
                     },
                     {
@@ -223,12 +225,6 @@
                       "val": {
                         "string": "USD"
                       }
-                    },
-                    {
-                      "key": {
-                        "symbol": "callback_type"
-                      },
-                      "val": "void"
                     },
                     {
                       "key": {
@@ -256,7 +252,17 @@
                       "key": {
                         "symbol": "memo_type"
                       },
-                      "val": "void"
+                      "val": {
+                        "string": "text"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "relayer"
+                      },
+                      "val": {
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                      }
                     },
                     {
                       "key": {
@@ -351,6 +357,18 @@
                         },
                         "val": {
                           "bool": true
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "AssetCount"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u32": 1
                         }
                       },
                       {
@@ -767,7 +785,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "relayer-on-tx"
+                  "string": "mt-stored"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
@@ -782,7 +800,9 @@
                   "string": "USD"
                 },
                 "void",
-                "void"
+                {
+                  "string": "text"
+                }
               ]
             }
           }
@@ -811,7 +831,7 @@
                   "string": "0"
                 },
                 {
-                  "string": "relayer-on-tx"
+                  "string": "mt-stored"
                 }
               ]
             }
@@ -902,7 +922,7 @@
                     "symbol": "anchor_transaction_id"
                   },
                   "val": {
-                    "string": "relayer-on-tx"
+                    "string": "mt-stored"
                   }
                 },
                 {
@@ -912,12 +932,6 @@
                   "val": {
                     "string": "USD"
                   }
-                },
-                {
-                  "key": {
-                    "symbol": "callback_type"
-                  },
-                  "val": "void"
                 },
                 {
                   "key": {
@@ -945,7 +959,17 @@
                   "key": {
                     "symbol": "memo_type"
                   },
-                  "val": "void"
+                  "val": {
+                    "string": "text"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "relayer"
+                  },
+                  "val": {
+                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                  }
                 },
                 {
                   "key": {
