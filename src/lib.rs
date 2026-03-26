@@ -10,7 +10,7 @@ pub mod types;
 use access::{require_admin, require_not_paused, require_relayer};
 use events::emit;
 use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
-use storage::{assets, deposits, dlq, max_deposit, relayers, settlements};
+use storage::{assets, deposits, dlq, max_deposit, min_deposit, relayers, settlements};
 use types::{DlqEntry, Event, Settlement, Transaction, TransactionStatus};
 
 #[contract]
@@ -104,7 +104,16 @@ impl SynapseContract {
         max_deposit::get(&env)
     }
 
-    // TODO(#15): enforce minimum deposit amount (configurable by admin)
+    pub fn set_min_deposit(env: Env, caller: Address, amount: i128) {
+        require_admin(&env, &caller);
+        if amount <= 0 { panic!("min deposit must be positive") }
+        min_deposit::set(&env, &amount);
+    }
+
+    pub fn get_min_deposit(env: Env) -> Option<i128> {
+        min_deposit::get(&env)
+    }
+
     // TODO(#16): enforce maximum deposit amount (configurable by admin) — DONE
     // TODO(#17): validate anchor_transaction_id is non-empty
     // TODO(#18): add `memo` field support (mirrors synapse-core CallbackPayload)
@@ -126,6 +135,10 @@ impl SynapseContract {
 
         if let Some(max) = max_deposit::get(&env) {
             if amount > max { panic!("amount exceeds max deposit") }
+        }
+
+        if let Some(min) = min_deposit::get(&env) {
+            if amount < min { panic!("amount below min deposit") }
         }
 
         if let Some(existing) = deposits::find_by_anchor_id(&env, &anchor_transaction_id) {
@@ -517,6 +530,94 @@ mod tests {
         // Set to 5000
         client.set_max_deposit(&admin, &5000i128);
         assert_eq!(client.get_max_deposit(), Some(5000i128));
+    }
+
+    #[test]
+    fn test_get_min_deposit_returns_none_before_set() {
+        let env = Env::default();
+        let (_admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        assert_eq!(client.get_min_deposit(), None);
+    }
+
+    #[test]
+    fn test_set_and_get_min_deposit() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        client.set_min_deposit(&admin, &10i128);
+        assert_eq!(client.get_min_deposit(), Some(10i128));
+    }
+
+    #[test]
+    #[should_panic(expected = "min deposit must be positive")]
+    fn test_set_min_deposit_rejects_zero() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        client.set_min_deposit(&admin, &0i128);
+    }
+
+    #[test]
+    #[should_panic(expected = "min deposit must be positive")]
+    fn test_set_min_deposit_rejects_negative() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        client.set_min_deposit(&admin, &-1i128);
+    }
+
+    #[test]
+    #[should_panic(expected = "amount below min deposit")]
+    fn test_deposit_below_min_panics() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let relayer = Address::generate(&env);
+        let stellar = Address::generate(&env);
+        let asset = SorobanString::from_str(&env, "USD");
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &asset);
+        client.set_min_deposit(&admin, &50i128);
+        client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "below-min-anchor"),
+            &stellar,
+            &49i128,
+            &asset,
+            &None,
+        );
+    }
+
+    #[test]
+    fn test_deposit_at_min_succeeds() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let relayer = Address::generate(&env);
+        let stellar = Address::generate(&env);
+        let asset = SorobanString::from_str(&env, "USD");
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &asset);
+        client.set_min_deposit(&admin, &50i128);
+        let tx_id = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "at-min-anchor"),
+            &stellar,
+            &50i128,
+            &asset,
+            &None,
+        );
+        assert!(tx_id.len() > 0);
+    }
+
+    #[test]
+    fn test_deposit_succeeds_when_no_min_set() {
+        let env = Env::default();
+        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "no-min-anchor");
+        let _ = relayer;
+        assert!(tx_id.len() > 0);
+        let _ = client;
     }
 
     #[test]
