@@ -9,10 +9,8 @@ pub mod types;
 
 use access::{accept_pending_admin, require_admin, require_not_paused, require_relayer, set_pending_admin};
 use events::emit;
-use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
-use storage::{assets, deposits, dlq, max_deposit, min_deposit, relayers, settlements};
 use soroban_sdk::{contract, contractimpl, symbol_short, Address, Bytes, Env, String as SorobanString, Symbol, Vec};
-use storage::{assets, deposits, dlq, max_deposit, relayers, settlements};
+use storage::{assets, deposits, dlq, max_deposit, min_deposit, relayers, settlements};
 use types::{DlqEntry, Event, Settlement, Transaction, TransactionStatus, MAX_RETRIES};
 
 #[contract]
@@ -77,48 +75,40 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
     pub fn transfer_admin(env: Env, caller: Address, new_admin: Address) {
         require_not_paused(&env);
         require_admin(&env, &caller);
-        let old_admin = storage::admin::get(&env);
         storage::admin::set(&env, &new_admin);
-        emit(&env, Event::AdminTransferred(old_admin, new_admin));
+        emit(&env, Event::AdminTransferAccepted(caller, new_admin));
     }
 
-    /// Propose a new admin address for transfer.
-    /// Only the current admin can propose a new admin.
-    /// The proposed admin must accept the transfer to complete it.
     pub fn propose_admin(env: Env, caller: Address, new_admin: Address) {
         require_not_paused(&env);
         require_admin(&env, &caller);
-        pending_admin::set(&env, &new_admin);
-        let current_admin = admin::get(&env);
-        emit(&env, Event::AdminTransferProposed(current_admin, new_admin));
+        storage::pending_admin::set(&env, &new_admin);
+        emit(&env, Event::AdminTransferProposed(new_admin));
     }
 
-    /// Accept the admin transfer proposal.
-    /// Only the proposed admin can accept the transfer.
-    /// After acceptance, the proposed admin becomes the new admin.
     pub fn accept_admin(env: Env, caller: Address) {
         require_not_paused(&env);
         caller.require_auth();
-        let pending = pending_admin::get(&env).expect("no pending admin transfer");
+        let pending = storage::pending_admin::get(&env).expect("no pending admin transfer");
         if caller != pending {
             panic!("only proposed admin can accept");
         }
-        let old_admin = admin::get(&env);
-        admin::set(&env, &pending);
-        pending_admin::clear(&env);
-        emit(&env, Event::AdminTransferred(old_admin, pending));
+        let old_admin = storage::admin::get(&env);
+        storage::admin::set(&env, &pending);
+        storage::pending_admin::clear(&env);
+        emit(&env, Event::AdminTransferAccepted(old_admin, pending));
     }
 
     pub fn pause(env: Env, caller: Address) {
         require_admin(&env, &caller);
         storage::pause::set(&env, true);
-        emit(&env, types::Event::ContractPaused);
+        emit(&env, Event::ContractPaused(caller));
     }
 
     pub fn unpause(env: Env, caller: Address) {
         require_admin(&env, &caller);
         storage::pause::set(&env, false);
-        emit(&env, Event::ContractUnpaused);
+        emit(&env, Event::ContractUnpaused(caller));
     }
 
     // TODO(#13): cap the total number of allowed assets to bound instance storage
@@ -175,9 +165,6 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
 
     pub fn get_max_deposit(env: Env) -> i128 {
         max_deposit::get(&env).unwrap_or(0)
-
-    pub fn get_max_deposit(env: Env) -> i128 {
-        max_deposit::get(&env)
     }
 
     // TODO(#16): enforce maximum deposit amount (configurable by admin) — DONE
@@ -203,19 +190,13 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
 
         if let Some(min) = min_deposit::get(&env) {
             if amount < min { panic!("amount below min deposit") }
-        if let Some(max) = max_deposit::get(&env) {
-            if amount > max {
-                panic!("amount exceeds max deposit")
-            }
         }
-
         if let Some(max) = max_deposit::get(&env) {
             if amount > max {
                 panic!("amount exceeds max deposit")
             }
         }
         if let Some(existing) = deposits::find_by_anchor_id(&env, &anchor_transaction_id) {
-            unlock_temp(&env, &anchor_transaction_id);
             return existing;
         }
 
@@ -225,10 +206,12 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
             tx_id,
             anchor_transaction_id.clone(),
             stellar_account,
+            caller.clone(),
             amount,
             asset_code,
             memo,
             memo_type,
+            None,
         );
         let id = tx.id.clone();
         deposits::save(&env, &tx);
@@ -250,7 +233,7 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         deposits::save(&env, &tx);
         emit(
             &env,
-            Event::StatusUpdated(tx_id, old_status, TransactionStatus::Processing),
+            Event::StatusUpdated(tx_id, TransactionStatus::Processing),
         );
     }
 
@@ -267,7 +250,7 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         }
         emit(
             &env,
-            Event::StatusUpdated(tx_id, old_status, TransactionStatus::Completed),
+            Event::StatusUpdated(tx_id, TransactionStatus::Completed),
         );
     }
     // TODO(#26): enforce transition guard — must be Pending or Processing
@@ -290,7 +273,7 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         deposits::save(&env, &tx);
         emit(
             &env,
-            Event::StatusUpdated(tx_id.clone(), old_status, TransactionStatus::Failed),
+            Event::StatusUpdated(tx_id.clone(), TransactionStatus::Failed),
         );
         let entry = DlqEntry::new(&env, tx_id.clone(), error_reason.clone());
         dlq::push(&env, &entry);
@@ -362,6 +345,14 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         if period_start > period_end {
             panic!("period_start must be <= period_end")
         }
+        let mut sum: i128 = 0;
+        for tx_id in tx_ids.iter() {
+            let tx = deposits::get(&env, &tx_id);
+            sum = sum.checked_add(tx.amount).expect("amount overflow");
+        }
+        if sum != total_amount {
+            panic!("total_amount mismatch");
+        }
         let settlement_id = next_id(&env, symbol_short!("stlnonce"));
         let s = Settlement::new(
             &env,
@@ -388,30 +379,7 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
             emit(&env, Event::Settled(tx_id, id.clone()));
             i += 1;
         }
-        let s = Settlement::new(
-            &env,
-            asset_code.clone(),
-            tx_ids.clone(),
-            total_amount,
-            period_start,
-            period_end,
-        );
-        let id = s.id.clone();
-        let mut j: u32 = 0;
-        while j < n {
-            let tx_id = tx_ids.get(j).unwrap();
-            let mut tx = deposits::get(&env, &tx_id);
-            tx.settlement_id = id.clone();
-            deposits::save(&env, &tx);
-            emit(&env, Event::Settled(tx_id, id.clone()));
-            j += 1;
-        }
         settlements::save(&env, &s);
-        for tx_id in tx_ids.iter() {
-            let mut tx = deposits::get(&env, &tx_id);
-            tx.settlement_id = id.clone();
-            deposits::save(&env, &tx);
-        }
         emit(
             &env,
             Event::SettlementFinalized(id.clone(), asset_code, total_amount),
@@ -434,11 +402,6 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         storage::admin::get(&env)
     }
 
-    /// Get the current admin address
-    pub fn get_admin(env: Env) -> Address {
-        admin::get(&env)
-    }
-
     pub fn is_paused(env: Env) -> bool {
         storage::pause::is_paused(&env)
     }
@@ -457,10 +420,6 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
 
     pub fn is_relayer(env: Env, address: Address) -> bool {
         relayers::has(&env, &address)
-    }
-
-    pub fn is_paused(env: Env) -> bool {
-        storage::pause::is_paused(&env)
     }
 
 }
@@ -965,6 +924,9 @@ mod tests {
         );
 
         assert_eq!(tx_id_1, tx_id_2);
+    }
+
+    #[test]
     fn test_register_deposit_extends_anchor_idx_ttl() {
         let env = Env::default();
         let (admin, contract_id) = setup(&env);
@@ -1179,6 +1141,9 @@ mod tests {
         let (admin, contract_id) = setup(&env);
         let client = SynapseContractClient::new(&env, &contract_id);
         client.add_asset(&admin, &SorobanString::from_str(&env, "US$"));
+    }
+
+    #[test]
     fn test_cancel_transaction_success() {
         let env = Env::default();
         let (admin, contract_id) = setup(&env);
