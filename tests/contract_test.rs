@@ -1060,6 +1060,30 @@ fn settle_non_completed_tx_panics() {
     );
 }
 
+// #34: double-settle guard
+#[test]
+#[should_panic(expected = "transaction already settled")]
+fn settle_already_settled_tx_panics() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "double-settle-1"),
+        &Address::generate(&env),
+        &50_000_000,
+        &usd(&env),
+        &None,
+    );
+    client.mark_processing(&relayer, &tx_id);
+    client.mark_completed(&relayer, &tx_id);
+    client.finalize_settlement(&relayer, &usd(&env), &vec![&env, tx_id.clone()], &50_000_000, &0u64, &1u64);
+    // second settlement with the same tx must panic
+    client.finalize_settlement(&relayer, &usd(&env), &vec![&env, tx_id], &50_000_000, &0u64, &1u64);
+}
+
 #[test]
 #[should_panic(expected = "period_start must be <= period_end")]
 fn finalize_settlement_panics_when_period_start_exceeds_period_end() {
