@@ -13,7 +13,7 @@ use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString,
 use storage::{assets, deposits, dlq, max_deposit, min_deposit, relayers, settlements};
 use soroban_sdk::{contract, contractimpl, symbol_short, Address, Bytes, Env, String as SorobanString, Symbol, Vec};
 use storage::{assets, deposits, dlq, max_deposit, relayers, settlements};
-use types::{DlqEntry, Event, Settlement, Transaction, TransactionStatus};
+use types::{DlqEntry, Event, Settlement, Transaction, TransactionStatus, MAX_RETRIES};
 
 #[contract]
 pub struct SynapseContract;
@@ -200,6 +200,10 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
 
         if let Some(min) = min_deposit::get(&env) {
             if amount < min { panic!("amount below min deposit") }
+        if let Some(max) = max_deposit::get(&env) {
+            if amount > max {
+                panic!("amount exceeds max deposit")
+            }
         }
 
         if let Some(max) = max_deposit::get(&env) {
@@ -235,6 +239,9 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         require_relayer(&env, &caller);
         let mut tx = deposits::get(&env, &tx_id);
         let old_status = tx.status.clone();
+        if tx.status != TransactionStatus::Pending {
+            panic!("transaction must be Pending");
+        }
         tx.status = TransactionStatus::Processing;
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
@@ -261,7 +268,6 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         );
     }
     // TODO(#26): enforce transition guard — must be Pending or Processing
-    // TODO(#27): cap max retry_count; emit `MaxRetriesExceeded` when hit
     // TODO(#28): validate error_reason is non-empty
     pub fn mark_failed(
         env: Env,
@@ -288,6 +294,7 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         emit(&env, Event::MovedToDlq(tx_id, error_reason));
     }
 
+    // TODO(#31): emit `DlqRetried` event
     pub fn retry_dlq(env: Env, caller: Address, tx_id: SorobanString) {
         require_not_paused(&env);
         let mut entry = dlq::get(&env, &tx_id).expect("dlq entry not found");
@@ -306,6 +313,11 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
             panic!("not admin or original relayer")
         }
 
+        if entry.retry_count >= MAX_RETRIES {
+            emit(&env, Event::MaxRetriesExceeded(tx_id.clone()));
+            panic!("max retries exceeded");
+        }
+
         tx.status = TransactionStatus::Pending;
         tx.updated_ledger = env.ledger().sequence();
         entry.retry_count += 1;
@@ -316,6 +328,20 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         emit(
             &env,
             Event::StatusUpdated(tx_id, TransactionStatus::Pending),
+        );
+    }
+
+    // TODO(#32): enforce transition guard — must be Pending or Processing
+    pub fn cancel_transaction(env: Env, caller: Address, tx_id: SorobanString) {
+        require_not_paused(&env);
+        require_admin(&env, &caller);
+        let mut tx = deposits::get(&env, &tx_id);
+        tx.status = TransactionStatus::Cancelled;
+        tx.updated_ledger = env.ledger().sequence();
+        deposits::save(&env, &tx);
+        emit(
+            &env,
+            Event::StatusUpdated(tx_id, TransactionStatus::Cancelled),
         );
     }
 
@@ -767,6 +793,8 @@ mod tests {
         let env = Env::default();
         let (admin, contract_id) = setup(&env);
         let client = SynapseContractClient::new(&env, &contract_id);
+
+        // Should return the admin that was set during initialization
         assert_eq!(client.get_admin(), admin);
     }
 
@@ -1148,6 +1176,36 @@ mod tests {
         let (admin, contract_id) = setup(&env);
         let client = SynapseContractClient::new(&env, &contract_id);
         client.add_asset(&admin, &SorobanString::from_str(&env, "US$"));
+    fn test_cancel_transaction_success() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let relayer = Address::generate(&env);
+        let stellar = Address::generate(&env);
+        let asset = SorobanString::from_str(&env, "USD");
+        let anchor_id = SorobanString::from_str(&env, "cancel-tx");
+
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &asset);
+        let tx_id =
+            client.register_deposit(&relayer, &anchor_id, &stellar, &100i128, &asset, &None);
+
+        // Cancel the transaction
+        client.cancel_transaction(&admin, &tx_id);
+
+        let tx = client.get_transaction(&tx_id);
+        assert!(matches!(tx.status, TransactionStatus::Cancelled));
+        assert!(tx.updated_ledger >= tx.created_ledger);
+    }
+
+    #[test]
+    #[should_panic(expected = "not admin")]
+    fn test_cancel_transaction_panics_when_not_admin() {
+        let env = Env::default();
+        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "cancel-unauth");
+
+        // Try to cancel with non-admin (relayer)
+        client.cancel_transaction(&relayer, &tx_id);
     }
 
     #[test]
@@ -1183,6 +1241,8 @@ mod tests {
             &1u64,
             &2u64,
         );
+
+        client.finalize_settlement(&relayer, &asset, &vec![&env, tx_id], &100i128, &1u64, &2u64);
     }
 
     // -----------------------------------------------------------------------

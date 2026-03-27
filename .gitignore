@@ -1,4 +1,7 @@
-/target 
+/target
+
+# test snapshot output — not for review
+test_snapshots/
 
 # /ISSUES.md
 test_snapshots/

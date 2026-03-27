@@ -128,6 +128,7 @@ impl DlqEntry {
 // TODO(#54): add `ContractPaused` / `ContractUnpaused` variants
 // TODO(#55): add `DlqRetried(SorobanString)` variant
 // TODO(#56): add `MaxRetriesExceeded(SorobanString)` variant
+// TODO(#57): add `AdminTransferred(Address, Address)` variant
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
@@ -146,6 +147,7 @@ pub enum Event {
 
     // DLQ
     MovedToDlq(SorobanString, SorobanString),                // (tx_id, error_reason)
+    MaxRetriesExceeded(SorobanString),                       // (tx_id)
     DlqRetried(SorobanString),                               // (tx_id)
     MaxRetriesExceeded(SorobanString),
     SettlementFinalized(SorobanString, SorobanString, i128), // (settlement_id, asset_code, total)
@@ -178,12 +180,16 @@ fn generate_id(env: &Env) -> SorobanString {
 fn generate_id(env: &Env, anchor_transaction_id: &SorobanString) -> SorobanString {
     let data = soroban_sdk::Bytes::from_slice(env, anchor_transaction_id.to_string().as_bytes());
     let hash = env.crypto().sha256(&data);
+    let hash = env
+        .crypto()
+        .sha256(&soroban_sdk::Bytes::from_slice(env, &data));
     let bytes = hash.to_array();
     let mut hex = [0u8; 32];
     const HEX: &[u8] = b"0123456789abcdef";
     for i in 0..16 {
         hex[i * 2] = HEX[(bytes[i] >> 4) as usize];
         hex[i * 2 + 1] = HEX[(bytes[i] & 0x0f) as usize];
+        hex[i * 2 + 1] = HEX[(bytes[i] & 0xf) as usize];
     }
     SorobanString::from_bytes(env, &hex)
 }
