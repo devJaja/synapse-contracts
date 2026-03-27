@@ -702,3 +702,50 @@ fn finalize_settlement_extends_ttl() {
     assert_eq!(s.id, s_id);
     assert_eq!(s.total_amount, 100_000_000);
 }
+
+// ---------------------------------------------------------------------------
+// Tx TTL — issue #22
+// ---------------------------------------------------------------------------
+
+#[test]
+fn deposits_save_extends_ttl_on_every_status_update() {
+    // Verifies that deposits::save bumps TTL not just on initial write but on
+    // every subsequent write (mark_processing, mark_completed, mark_failed, etc.)
+    use synapse_contract::storage::{StorageKey, TX_TTL_EXTEND_TO};
+    use soroban_sdk::testutils::storage::Persistent as _;
+
+    let env = Env::default();
+    let (admin, contract_id, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "ttl-lifecycle"),
+        &Address::generate(&env),
+        &50_000_000,
+        &usd(&env),
+        &None,
+    );
+
+    // After mark_processing the TTL must still equal TX_TTL_EXTEND_TO
+    client.mark_processing(&relayer, &tx_id);
+    env.as_contract(&contract_id, || {
+        let ttl = env
+            .storage()
+            .persistent()
+            .get_ttl(&StorageKey::Tx(tx_id.clone()));
+        assert_eq!(ttl, TX_TTL_EXTEND_TO);
+    });
+
+    // After mark_completed the TTL must still equal TX_TTL_EXTEND_TO
+    client.mark_completed(&relayer, &tx_id);
+    env.as_contract(&contract_id, || {
+        let ttl = env
+            .storage()
+            .persistent()
+            .get_ttl(&StorageKey::Tx(tx_id.clone()));
+        assert_eq!(ttl, TX_TTL_EXTEND_TO);
+    });
+}
