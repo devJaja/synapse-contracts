@@ -138,7 +138,7 @@ pub enum Event {
     // Relayer management
     RelayerGranted(Address),                                 // (relayer)
     DepositRegistered(SorobanString, SorobanString),         // (tx_id, anchor_id)
-    StatusUpdated(SorobanString, TransactionStatus),         // (tx_id, new_status)
+    StatusUpdated(SorobanString, TransactionStatus, TransactionStatus), // (tx_id, old_status, new_status)
     SettlementFinalized(SorobanString, SorobanString, i128), // (settlement_id, asset_code, total)
 
     // Pause
