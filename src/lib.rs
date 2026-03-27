@@ -967,6 +967,9 @@ mod tests {
         client.mark_processing(&relayer, &tx_id);
         client.mark_completed(&relayer, &tx_id);
 
+        client.mark_processing(&relayer, &tx_id);
+        client.mark_completed(&relayer, &tx_id);
+
         let settlement_id = client.finalize_settlement(
             &relayer,
             &asset,
