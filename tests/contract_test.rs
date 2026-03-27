@@ -165,6 +165,7 @@ fn register_deposit_panics_when_paused() {
         &100_000_000,
         &usd(&env),
         &None,
+        &None,
     );
 }
 
@@ -319,6 +320,7 @@ fn register_deposit_rejects_unlisted_asset() {
         &100_000_000,
         &usd(&env),
         &None,
+        &None,
     );
 }
 
@@ -341,6 +343,7 @@ fn register_deposit_returns_tx_id() {
         &100_000_000,
         &usd(&env),
         &None,
+        &None,
     );
     let tx = client.get_transaction(&tx_id);
     assert_eq!(tx.amount, 100_000_000);
@@ -355,8 +358,8 @@ fn register_deposit_is_idempotent() {
     client.add_asset(&admin, &usd(&env));
     let anchor_id = SorobanString::from_str(&env, "anchor-001");
     let depositor = Address::generate(&env);
-    let id1 = client.register_deposit(&relayer, &anchor_id, &depositor, &100_000_000, &usd(&env), &None);
-    let id2 = client.register_deposit(&relayer, &anchor_id, &depositor, &100_000_000, &usd(&env), &None);
+    let id1 = client.register_deposit(&relayer, &anchor_id, &depositor, &100_000_000, &usd(&env), &None, &None);
+    let id2 = client.register_deposit(&relayer, &anchor_id, &depositor, &100_000_000, &usd(&env), &None, &None);
     assert_eq!(id1, id2);
 }
 
@@ -372,6 +375,7 @@ fn register_deposit_rejects_non_relayer() {
         &Address::generate(&env),
         &100_000_000,
         &usd(&env),
+        &None,
         &None,
     );
 }
@@ -429,7 +433,7 @@ fn deposit_below_max_succeeds() {
     client.add_asset(&admin, &usd(&env));
     client.set_max_deposit(&admin, &500_000_000);
     let tx_id = client.register_deposit(&relayer, &SorobanString::from_str(&env, "a-max-1"),
-        &Address::generate(&env), &499_999_999, &usd(&env), &None);
+        &Address::generate(&env), &499_999_999, &usd(&env), &None, &None);
     let tx = client.get_transaction(&tx_id);
     assert_eq!(tx.amount, 499_999_999);
 }
@@ -443,7 +447,7 @@ fn deposit_at_max_succeeds() {
     client.add_asset(&admin, &usd(&env));
     client.set_max_deposit(&admin, &500_000_000);
     let tx_id = client.register_deposit(&relayer, &SorobanString::from_str(&env, "a-max-2"),
-        &Address::generate(&env), &500_000_000, &usd(&env), &None);
+        &Address::generate(&env), &500_000_000, &usd(&env), &None, &None);
     let tx = client.get_transaction(&tx_id);
     assert_eq!(tx.amount, 500_000_000);
 }
@@ -458,7 +462,7 @@ fn deposit_above_max_panics() {
     client.add_asset(&admin, &usd(&env));
     client.set_max_deposit(&admin, &500_000_000);
     client.register_deposit(&relayer, &SorobanString::from_str(&env, "a-max-3"),
-        &Address::generate(&env), &500_000_001, &usd(&env), &None);
+        &Address::generate(&env), &500_000_001, &usd(&env), &None, &None);
 }
 
 #[test]
@@ -469,7 +473,7 @@ fn deposit_succeeds_when_no_max_set() {
     client.grant_relayer(&admin, &relayer);
     client.add_asset(&admin, &usd(&env));
     let tx_id = client.register_deposit(&relayer, &SorobanString::from_str(&env, "a-max-4"),
-        &Address::generate(&env), &999_999_999_999, &usd(&env), &None);
+        &Address::generate(&env), &999_999_999_999, &usd(&env), &None, &None);
     let tx = client.get_transaction(&tx_id);
     assert_eq!(tx.amount, 999_999_999_999);
 }
@@ -492,6 +496,7 @@ fn full_lifecycle_pending_to_completed() {
         &50_000_000,
         &usd(&env),
         &None,
+        &None,
     );
     client.mark_processing(&relayer, &tx_id);
     client.mark_completed(&relayer, &tx_id);
@@ -510,6 +515,7 @@ fn mark_failed_creates_dlq_entry() {
         &Address::generate(&env),
         &50_000_000,
         &usd(&env),
+        &None,
         &None,
     );
     client.mark_failed(
@@ -645,7 +651,7 @@ fn non_admin_cannot_retry_dlq() {
     client.grant_relayer(&admin, &relayer);
     client.add_asset(&admin, &usd(&env));
     let tx_id = client.register_deposit(&relayer, &SorobanString::from_str(&env, "a2"),
-        &Address::generate(&env), &50_000_000, &usd(&env), &None);
+        &Address::generate(&env), &50_000_000, &usd(&env), &None, &None);
     client.mark_failed(&relayer, &tx_id, &SorobanString::from_str(&env, "timeout"));
     // Only admin can retry for now — use admin
     client.retry_dlq(&admin, &tx_id);
@@ -670,6 +676,7 @@ fn unrelated_relayer_cannot_retry_dlq() {
         &Address::generate(&env),
         &50_000_000,
         &usd(&env),
+        &None,
         &None,
     );
     client.mark_failed(
@@ -699,6 +706,7 @@ fn finalize_settlement_stores_record() {
         &100_000_000,
         &usd(&env),
         &None,
+        &None,
     );
     client.mark_processing(&relayer, &tx_id);
     client.mark_completed(&relayer, &tx_id);
@@ -723,12 +731,12 @@ fn finalize_settlement_emits_settlement_finalized_event() {
     client.add_asset(&admin, &usd(&env));
 
     let tx_id_1 = client.register_deposit(&relayer, &SorobanString::from_str(&env, "a4"),
-        &Address::generate(&env), &40_000_000, &usd(&env), &None);
+        &Address::generate(&env), &40_000_000, &usd(&env), &None, &None);
     client.mark_processing(&relayer, &tx_id_1);
     client.mark_completed(&relayer, &tx_id_1);
 
     let tx_id_2 = client.register_deposit(&relayer, &SorobanString::from_str(&env, "a5"),
-        &Address::generate(&env), &60_000_000, &usd(&env), &None);
+        &Address::generate(&env), &60_000_000, &usd(&env), &None, &None);
     client.mark_processing(&relayer, &tx_id_2);
     client.mark_completed(&relayer, &tx_id_2);
 
@@ -832,7 +840,7 @@ fn finalize_settlement_succeeds_with_correct_total() {
     client.grant_relayer(&admin, &relayer);
     client.add_asset(&admin, &usd(&env));
     let tx_id = client.register_deposit(&relayer, &SorobanString::from_str(&env, "a4"),
-        &Address::generate(&env), &100_000_000, &usd(&env), &None);
+        &Address::generate(&env), &100_000_000, &usd(&env), &None, &None);
     client.mark_processing(&relayer, &tx_id);
     client.mark_completed(&relayer, &tx_id);
     let s_id = client.finalize_settlement(

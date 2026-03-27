@@ -62,7 +62,7 @@ impl Transaction {
             callback_type,
             memo,
             memo_type: None,
-            callback_type: None,
+            callback_type,
         }
     }
 }
