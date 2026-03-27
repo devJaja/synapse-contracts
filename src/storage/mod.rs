@@ -5,8 +5,10 @@ use soroban_sdk::{contracttype, Address, Env, String as SorobanString};
 // TODO(#59): use temporary() storage for in-flight idempotency locks
 // TODO(#60): add DlqCount key to track total DLQ entries without scanning
 
-const TX_TTL_THRESHOLD: u32 = 17_280;
-const TX_TTL_EXTEND_TO: u32 = 172_800;
+/// Minimum remaining ledgers before a Tx entry's TTL is extended (~1 day at 5s/ledger).
+pub const TX_TTL_THRESHOLD: u32 = 17_280;
+/// Target TTL in ledgers after extension (~10 days at 5s/ledger).
+pub const TX_TTL_EXTEND_TO: u32 = 172_800;
 
 #[contracttype]
 pub enum StorageKey {
