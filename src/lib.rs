@@ -299,18 +299,11 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         require_not_paused(&env);
         let mut entry = dlq::get(&env, &tx_id).expect("dlq entry not found");
         let mut tx = deposits::get(&env, &tx_id);
-        let admin = storage::admin::get(&env);
-        if caller != admin && caller != tx.relayer {
-            panic!("not admin or original relayer");
-        }
-        caller.require_auth();
-
-        // Allow either the admin or the original relayer that registered the tx.
         caller.require_auth();
         let is_admin = caller == storage::admin::get(&env);
         let is_original_relayer = caller == tx.relayer;
         if !is_admin && !is_original_relayer {
-            panic!("not admin or original relayer")
+            panic!("not admin")
         }
 
         if entry.retry_count >= MAX_RETRIES {
@@ -327,7 +320,7 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
 
         emit(
             &env,
-            Event::StatusUpdated(tx_id, TransactionStatus::Pending),
+            Event::StatusUpdated(tx_id, TransactionStatus::Failed, TransactionStatus::Pending),
         );
     }
 
@@ -957,6 +950,9 @@ mod tests {
         );
 
         assert_eq!(tx_id_1, tx_id_2);
+    }
+
+    #[test]
     fn test_register_deposit_extends_anchor_idx_ttl() {
         let env = Env::default();
         let (admin, contract_id) = setup(&env);
