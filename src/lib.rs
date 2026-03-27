@@ -56,13 +56,15 @@ impl SynapseContract {
     }
 
     // TODO(#3): emit `RelayerGranted` event
-pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
+    pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         require_not_paused(&env);
         let zero_addr = Address::from_string(&SorobanString::from_str(
             &env,
             "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
         ));
-        if relayer == zero_addr { panic!("invalid relayer address") }
+        if relayer == zero_addr {
+            panic!("invalid relayer address")
+        }
         require_admin(&env, &caller);
         relayers::add(&env, &relayer);
     }
