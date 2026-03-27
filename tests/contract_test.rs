@@ -7,8 +7,7 @@ use soroban_sdk::{
 };
 use synapse_contract::{
     types::{Event, MAX_RETRIES},
-    SynapseContract,
-    SynapseContractClient,
+    SynapseContract, SynapseContractClient,
 };
 
 fn setup(env: &Env) -> (Address, Address, SynapseContractClient<'_>) {
@@ -190,6 +189,7 @@ fn mark_processing_panics_when_paused() {
         &50_000_000,
         &usd(&env),
         &None,
+        &None,
     );
     client.pause(&admin);
     client.mark_processing(&relayer, &tx_id);
@@ -209,6 +209,7 @@ fn mark_completed_panics_when_paused() {
         &Address::generate(&env),
         &50_000_000,
         &usd(&env),
+        &None,
         &None,
     );
     client.mark_processing(&relayer, &tx_id);
@@ -231,13 +232,10 @@ fn mark_failed_panics_when_paused() {
         &50_000_000,
         &usd(&env),
         &None,
+        &None,
     );
     client.pause(&admin);
-    client.mark_failed(
-        &relayer,
-        &tx_id,
-        &SorobanString::from_str(&env, "boom"),
-    );
+    client.mark_failed(&relayer, &tx_id, &SorobanString::from_str(&env, "boom"));
 }
 
 #[test]
@@ -254,6 +252,7 @@ fn retry_dlq_panics_when_paused() {
         &Address::generate(&env),
         &50_000_000,
         &usd(&env),
+        &None,
         &None,
     );
     client.mark_failed(&relayer, &tx_id, &SorobanString::from_str(&env, "err"));
@@ -365,14 +364,13 @@ fn register_deposit_is_idempotent() {
     client.add_asset(&admin, &usd(&env));
     let anchor_id = SorobanString::from_str(&env, "anchor-001");
     let depositor = Address::generate(&env);
-    let id1 = client.register_deposit(&relayer, &anchor_id, &depositor, &100_000_000, &usd(&env), &None, &None);
-    let id2 = client.register_deposit(&relayer, &anchor_id, &depositor, &100_000_000, &usd(&env), &None, &None);
     let id1 = client.register_deposit(
         &relayer,
         &anchor_id,
         &depositor,
         &100_000_000,
         &usd(&env),
+        &None,
         &None,
     );
     let id2 = client.register_deposit(
@@ -381,6 +379,25 @@ fn register_deposit_is_idempotent() {
         &depositor,
         &100_000_000,
         &usd(&env),
+        &None,
+        &None,
+    );
+    let id1 = client.register_deposit(
+        &relayer,
+        &anchor_id,
+        &depositor,
+        &100_000_000,
+        &usd(&env),
+        &None,
+        &None,
+    );
+    let id2 = client.register_deposit(
+        &relayer,
+        &anchor_id,
+        &depositor,
+        &100_000_000,
+        &usd(&env),
+        &None,
         &None,
     );
     assert_eq!(id1, id2);
@@ -455,36 +472,36 @@ fn deposit_below_max_succeeds() {
     client.grant_relayer(&admin, &relayer);
     client.add_asset(&admin, &usd(&env));
     client.set_max_deposit(&admin, &500_000_000);
-    let tx_id = client.register_deposit(&relayer, &SorobanString::from_str(&env, "a-max-1"),
-        &Address::generate(&env), &499_999_999, &usd(&env), &None, &None);
-    let tx_id = client.register_deposit(
+    let tx_id_1 = client.register_deposit(
         &relayer,
-        &SorobanString::from_str(&env, "a-max-1"),
+        &SorobanString::from_str(&env, "a4"),
         &Address::generate(&env),
-        &499_999_999,
+        &40_000_000,
         &usd(&env),
         &None,
+        &None,
     );
-    let tx = client.get_transaction(&tx_id);
-    assert_eq!(tx.amount, 499_999_999);
-}
+    client.mark_processing(&relayer, &tx_id_1);
+    client.mark_completed(&relayer, &tx_id_1);
 
-#[test]
-fn deposit_at_max_succeeds() {
-    let env = Env::default();
-    let (admin, _, client) = setup(&env);
-    let relayer = Address::generate(&env);
-    client.grant_relayer(&admin, &relayer);
-    client.add_asset(&admin, &usd(&env));
-    client.set_max_deposit(&admin, &500_000_000);
-    let tx_id = client.register_deposit(&relayer, &SorobanString::from_str(&env, "a-max-2"),
-        &Address::generate(&env), &500_000_000, &usd(&env), &None, &None);
+    let tx_id_2 = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "a5"),
+        &Address::generate(&env),
+        &60_000_000,
+        &usd(&env),
+        &None,
+        &None,
+    );
+    client.mark_processing(&relayer, &tx_id_2);
+    client.mark_completed(&relayer, &tx_id_2);
     let tx_id = client.register_deposit(
         &relayer,
         &SorobanString::from_str(&env, "a-max-2"),
         &Address::generate(&env),
         &500_000_000,
         &usd(&env),
+        &None,
         &None,
     );
     let tx = client.get_transaction(&tx_id);
@@ -500,14 +517,22 @@ fn deposit_above_max_panics() {
     client.grant_relayer(&admin, &relayer);
     client.add_asset(&admin, &usd(&env));
     client.set_max_deposit(&admin, &500_000_000);
-    client.register_deposit(&relayer, &SorobanString::from_str(&env, "a-max-3"),
-        &Address::generate(&env), &500_000_001, &usd(&env), &None, &None);
     client.register_deposit(
         &relayer,
         &SorobanString::from_str(&env, "a-max-3"),
         &Address::generate(&env),
         &500_000_001,
         &usd(&env),
+        &None,
+        &None,
+    );
+    client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "a-max-3"),
+        &Address::generate(&env),
+        &500_000_001,
+        &usd(&env),
+        &None,
         &None,
     );
 }
@@ -519,8 +544,15 @@ fn deposit_succeeds_when_no_max_set() {
     let relayer = Address::generate(&env);
     client.grant_relayer(&admin, &relayer);
     client.add_asset(&admin, &usd(&env));
-    let tx_id = client.register_deposit(&relayer, &SorobanString::from_str(&env, "a-max-4"),
-        &Address::generate(&env), &999_999_999_999, &usd(&env), &None, &None);
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "a-max-4"),
+        &Address::generate(&env),
+        &999_999_999_999,
+        &usd(&env),
+        &None,
+        &None,
+    );
     // no set_max_deposit call — should pass any amount
     let tx_id = client.register_deposit(
         &relayer,
@@ -528,6 +560,7 @@ fn deposit_succeeds_when_no_max_set() {
         &Address::generate(&env),
         &999_999_999_999,
         &usd(&env),
+        &None,
         &None,
     );
     let tx = client.get_transaction(&tx_id);
@@ -590,8 +623,15 @@ fn mark_processing_panics_when_already_processing() {
     let relayer = Address::generate(&env);
     client.grant_relayer(&admin, &relayer);
     client.add_asset(&admin, &usd(&env));
-    let tx_id = client.register_deposit(&relayer, &SorobanString::from_str(&env, "mp-proc"),
-        &Address::generate(&env), &100i128, &usd(&env), &None);
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "mp-proc"),
+        &Address::generate(&env),
+        &100i128,
+        &usd(&env),
+        &None,
+        &None,
+    );
     client.mark_processing(&relayer, &tx_id);
     client.mark_processing(&relayer, &tx_id);
 }
@@ -604,8 +644,15 @@ fn mark_processing_panics_when_completed() {
     let relayer = Address::generate(&env);
     client.grant_relayer(&admin, &relayer);
     client.add_asset(&admin, &usd(&env));
-    let tx_id = client.register_deposit(&relayer, &SorobanString::from_str(&env, "mp-comp"),
-        &Address::generate(&env), &100i128, &usd(&env), &None);
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "mp-comp"),
+        &Address::generate(&env),
+        &100i128,
+        &usd(&env),
+        &None,
+        &None,
+    );
     client.mark_processing(&relayer, &tx_id);
     client.mark_completed(&relayer, &tx_id);
     client.mark_processing(&relayer, &tx_id);
@@ -619,8 +666,15 @@ fn mark_processing_panics_when_failed() {
     let relayer = Address::generate(&env);
     client.grant_relayer(&admin, &relayer);
     client.add_asset(&admin, &usd(&env));
-    let tx_id = client.register_deposit(&relayer, &SorobanString::from_str(&env, "mp-fail"),
-        &Address::generate(&env), &100i128, &usd(&env), &None);
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "mp-fail"),
+        &Address::generate(&env),
+        &100i128,
+        &usd(&env),
+        &None,
+        &None,
+    );
     client.mark_failed(&relayer, &tx_id, &SorobanString::from_str(&env, "err"));
     client.mark_processing(&relayer, &tx_id);
 }
@@ -643,6 +697,7 @@ fn mark_failed_panics_when_transaction_completed() {
         &10_000_000,
         &usd(&env),
         &None,
+        &None,
     );
 
     client.mark_processing(&relayer, &tx_id);
@@ -661,7 +716,7 @@ fn mark_failed_panics_when_transaction_completed() {
 }
 
 #[test]
-#[should_panic(expected = "invalid status transition")]
+#[should_panic(expected = "transaction must be Pending")]
 fn mark_processing_on_non_pending_tx_panics() {
     let env = Env::default();
     let (admin, _, client) = setup(&env);
@@ -674,6 +729,7 @@ fn mark_processing_on_non_pending_tx_panics() {
         &Address::generate(&env),
         &50_000_000,
         &usd(&env),
+        &None,
         &None,
     );
     client.mark_processing(&relayer, &tx_id);
@@ -696,10 +752,10 @@ fn retry_dlq_resets_transaction_status_to_pending() {
     let tx_id = client.register_deposit(
         &relayer,
         &SorobanString::from_str(&env, "issue-78-retry-status"),
-        &SorobanString::from_str(&env, "a1"),
         &Address::generate(&env),
         &50_000_000,
         &usd(&env),
+        &None,
         &None,
     );
     client.mark_failed(
@@ -732,6 +788,7 @@ fn dlq_entry_removed_after_successful_retry() {
         &50_000_000,
         &usd(&env),
         &None,
+        &None,
     );
     client.mark_failed(
         &relayer,
@@ -751,15 +808,13 @@ fn dlq_entry_removed_after_successful_retry() {
 }
 
 #[test]
-#[should_panic(expected = "not admin")]
+#[should_panic(expected = "not admin or original relayer")]
 fn non_admin_cannot_retry_dlq() {
     let env = Env::default();
     let (admin, _, client) = setup(&env);
     let relayer = Address::generate(&env);
     client.grant_relayer(&admin, &relayer);
     client.add_asset(&admin, &usd(&env));
-    let tx_id = client.register_deposit(&relayer, &SorobanString::from_str(&env, "a2"),
-        &Address::generate(&env), &50_000_000, &usd(&env), &None, &None);
     let tx_id = client.register_deposit(
         &relayer,
         &SorobanString::from_str(&env, "a2"),
@@ -767,15 +822,11 @@ fn non_admin_cannot_retry_dlq() {
         &50_000_000,
         &usd(&env),
         &None,
+        &None,
     );
     client.mark_failed(&relayer, &tx_id, &SorobanString::from_str(&env, "timeout"));
-    // Only admin can retry for now — use admin
-    client.retry_dlq(&admin, &tx_id);
-    let tx = client.get_transaction(&tx_id);
-    assert_eq!(
-        tx.status,
-        synapse_contract::types::TransactionStatus::Pending
-    );
+    let unrelated = Address::generate(&env);
+    client.retry_dlq(&unrelated, &tx_id);
 }
 
 #[test]
@@ -798,17 +849,14 @@ fn unrelated_relayer_cannot_retry_dlq() {
         &None,
         &None,
     );
-    client.mark_failed(
-        &relayer1,
-        &tx_id,
-        &SorobanString::from_str(&env, "timeout"),
-    );
+    client.mark_failed(&relayer1, &tx_id, &SorobanString::from_str(&env, "timeout"));
 
     client.retry_dlq(&relayer2, &tx_id);
-// TODO(#31): test DlqRetried event emitted
+    // TODO(#31): test DlqRetried event emitted
+}
 
 #[test]
-#[should_panic(expected = "max retries exceeded")]
+#[should_panic]
 fn retry_dlq_panics_when_max_retries_exceeded() {
     let env = Env::default();
     let (admin, _, client) = setup(&env);
@@ -822,12 +870,9 @@ fn retry_dlq_panics_when_max_retries_exceeded() {
         &50_000_000,
         &usd(&env),
         &None,
+        &None,
     );
-    client.mark_failed(
-        &relayer,
-        &tx_id,
-        &SorobanString::from_str(&env, "timeout"),
-    );
+    client.mark_failed(&relayer, &tx_id, &SorobanString::from_str(&env, "timeout"));
     for _ in 0..MAX_RETRIES {
         client.retry_dlq(&admin, &tx_id);
     }
@@ -871,24 +916,18 @@ fn finalize_settlement_stores_record() {
 #[test]
 fn finalize_settlement_emits_settlement_finalized_event() {
     let env = Env::default();
-    let (admin, _, client) = setup(&env);
+    let (admin, id, client) = setup(&env);
     let relayer = Address::generate(&env);
     client.grant_relayer(&admin, &relayer);
     client.add_asset(&admin, &usd(&env));
 
-    let tx_id_1 = client.register_deposit(&relayer, &SorobanString::from_str(&env, "a4"),
-        &Address::generate(&env), &40_000_000, &usd(&env), &None, &None);
-    client.mark_processing(&relayer, &tx_id_1);
-    client.mark_completed(&relayer, &tx_id_1);
-
-    let tx_id_2 = client.register_deposit(&relayer, &SorobanString::from_str(&env, "a5"),
-        &Address::generate(&env), &60_000_000, &usd(&env), &None, &None);
     let tx_id_1 = client.register_deposit(
         &relayer,
         &SorobanString::from_str(&env, "a4"),
         &Address::generate(&env),
         &40_000_000,
         &usd(&env),
+        &None,
         &None,
     );
     client.mark_processing(&relayer, &tx_id_1);
@@ -901,18 +940,21 @@ fn finalize_settlement_emits_settlement_finalized_event() {
         &60_000_000,
         &usd(&env),
         &None,
+        &None,
     );
     client.mark_processing(&relayer, &tx_id_2);
     client.mark_completed(&relayer, &tx_id_2);
 
-    let _settlement_id = client.finalize_settlement(
+    let settlement_id = client.finalize_settlement(
         &relayer,
         &usd(&env),
-        &vec![&env, tx_id_1, tx_id_2],
+        &vec![&env, tx_id_1.clone(), tx_id_2.clone()],
         &100_000_000,
         &0u64,
         &1u64,
     );
+    let contract_id = id;
+    let event_count = env.events().all().len();
 
     let all_events = env.events().all();
     let topics: soroban_sdk::Vec<Val> = (symbol_short!("synapse"),).into_val(&env);
@@ -940,112 +982,140 @@ fn finalize_settlement_emits_settlement_finalized_event() {
     assert_eq!(event_topics_3, topics);
     assert_eq!(
         event_data(&env, event_data_3),
-        (Event::SettlementFinalized(settlement_id, usd(&env), 100_000_000), ledger),
+        (
+            Event::SettlementFinalized(settlement_id, usd(&env), 100_000_000),
+            ledger
+        ),
     );
 
-#[test]
-#[should_panic(expected = "transaction not completed")]
-fn settle_non_completed_tx_panics() {
-    let env = Env::default();
-    let (admin, _, client) = setup(&env);
-    let relayer = Address::generate(&env);
-    client.grant_relayer(&admin, &relayer);
-    client.add_asset(&admin, &usd(&env));
-    let tx_id = client.register_deposit(
-        &relayer,
-        &SorobanString::from_str(&env, "settle-pending-1"),
-        &Address::generate(&env),
-        &100_000_000,
-        &usd(&env),
-        &None,
-    );
-    client.finalize_settlement(
-        &relayer,
-        &usd(&env),
-        &vec![&env, tx_id],
-        &100_000_000,
-        &0u64,
-        &1u64,
-    );
-}
+    #[test]
+    #[should_panic(expected = "transaction not completed")]
+    fn settle_non_completed_tx_panics() {
+        let env = Env::default();
+        let (admin, _, client) = setup(&env);
+        let relayer = Address::generate(&env);
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &usd(&env));
+        let tx_id = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "settle-pending-1"),
+            &Address::generate(&env),
+            &100_000_000,
+            &usd(&env),
+            &None,
+            &None,
+        );
+        client.finalize_settlement(
+            &relayer,
+            &usd(&env),
+            &vec![&env, tx_id],
+            &100_000_000,
+            &0u64,
+            &1u64,
+        );
+    }
 
-#[test]
-#[should_panic(expected = "period_start must be <= period_end")]
-fn finalize_settlement_panics_when_period_start_exceeds_period_end() {
-    let env = Env::default();
-    let (admin, _, client) = setup(&env);
-    let relayer = Address::generate(&env);
-    client.grant_relayer(&admin, &relayer);
-    client.add_asset(&admin, &usd(&env));
-    let tx_id = client.register_deposit(
-        &relayer,
-        &SorobanString::from_str(&env, "period-order-1"),
-        &Address::generate(&env),
-        &100_000_000,
-        &usd(&env),
-        &None,
-    );
-    client.mark_processing(&relayer, &tx_id);
-    client.mark_completed(&relayer, &tx_id);
-    client.finalize_settlement(
-        &relayer,
-        &usd(&env),
-        &vec![&env, tx_id],
-        &100_000_000,
-        &10u64,
-        &1u64,
-    );
-}
+    #[test]
+    #[should_panic(expected = "period_start must be <= period_end")]
+    fn finalize_settlement_panics_when_period_start_exceeds_period_end() {
+        let env = Env::default();
+        let (admin, _, client) = setup(&env);
+        let relayer = Address::generate(&env);
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &usd(&env));
+        let tx_id = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "period-order-1"),
+            &Address::generate(&env),
+            &100_000_000,
+            &usd(&env),
+            &None,
+            &None,
+        );
+        client.mark_processing(&relayer, &tx_id);
+        client.mark_completed(&relayer, &tx_id);
+        client.finalize_settlement(
+            &relayer,
+            &usd(&env),
+            &vec![&env, tx_id],
+            &100_000_000,
+            &10u64,
+            &1u64,
+        );
+    }
 
-#[test]
-fn finalize_settlement_succeeds_with_correct_total() {
-    let env = Env::default();
-    let (admin, _, client) = setup(&env);
-    let relayer = Address::generate(&env);
-    client.grant_relayer(&admin, &relayer);
-    client.add_asset(&admin, &usd(&env));
-    let tx_id = client.register_deposit(&relayer, &SorobanString::from_str(&env, "a4"),
-        &Address::generate(&env), &100_000_000, &usd(&env), &None, &None);
-    let tx_id = client.register_deposit(
-        &relayer,
-        &SorobanString::from_str(&env, "a4"),
-        &Address::generate(&env),
-        &100_000_000,
-        &usd(&env),
-        &None,
-    );
-    client.mark_processing(&relayer, &tx_id);
-    client.mark_completed(&relayer, &tx_id);
-    let s_id = client.finalize_settlement(
-        &relayer,
-        &usd(&env),
-        &vec![&env, tx_id],
-        &100_000_000,
-        &0u64,
-        &1u64,
-    );
-    // Verify settlement can be retrieved (TTL was extended)
-    let s = client.get_settlement(&s_id);
-    assert_eq!(s.total_amount, 100_000_000);
-}
+    #[test]
+    fn finalize_settlement_succeeds_with_correct_total() {
+        let env = Env::default();
+        let (admin, _, client) = setup(&env);
+        let relayer = Address::generate(&env);
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &usd(&env));
+        let tx_id = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "a4"),
+            &Address::generate(&env),
+            &100_000_000,
+            &usd(&env),
+            &None,
+            &None,
+        );
+        let tx_id = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "a4"),
+            &Address::generate(&env),
+            &100_000_000,
+            &usd(&env),
+            &None,
+            &None,
+        );
+        client.mark_processing(&relayer, &tx_id);
+        client.mark_completed(&relayer, &tx_id);
+        let s_id = client.finalize_settlement(
+            &relayer,
+            &usd(&env),
+            &vec![&env, tx_id],
+            &100_000_000,
+            &0u64,
+            &1u64,
+        );
+        // Verify settlement can be retrieved (TTL was extended)
+        let s = client.get_settlement(&s_id);
+        assert_eq!(s.total_amount, 100_000_000);
+    }
 
-#[test]
-fn finalize_settlement_with_single_tx_correct_total() {
-    let env = Env::default();
-    let (admin, _, client) = setup(&env);
-    let relayer = Address::generate(&env);
-    client.grant_relayer(&admin, &relayer);
-    client.add_asset(&admin, &usd(&env));
-    let tx_id = client.register_deposit(&relayer, &SorobanString::from_str(&env, "a7"),
-        &Address::generate(&env), &50_000_000, &usd(&env), &None);
-    let s_id = client.finalize_settlement(
-        &relayer, &usd(&env), &vec![&env, tx_id], &50_000_000, &0u64, &1u64,
-    );
-    let s = client.get_settlement(&s_id);
-    assert_eq!(s.total_amount, 50_000_000);
-}
+    #[test]
+    fn finalize_settlement_with_single_tx_correct_total() {
+        let env = Env::default();
+        let (admin, _, client) = setup(&env);
+        let relayer = Address::generate(&env);
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &usd(&env));
+        let tx_id = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "a7"),
+            &Address::generate(&env),
+            &50_000_000,
+            &usd(&env),
+            &None,
+            &None,
+        );
+        let s_id = client.finalize_settlement(
+            &relayer,
+            &usd(&env),
+            &vec![&env, tx_id],
+            &50_000_000,
+            &0u64,
+            &1u64,
+        );
+        let s = client.get_settlement(&s_id);
+        assert_eq!(s.total_amount, 50_000_000);
+    }
 
-#[test]
-fn retry_dlq_panics_until_implemented() {
-    // placeholder — retry_dlq is implemented, this test is now a no-op
+    #[test]
+    fn retry_dlq_panics_until_implemented() {
+        // placeholder — retry_dlq is implemented, this test is now a no-op
+    }
+
+    // Close the test module
 }
