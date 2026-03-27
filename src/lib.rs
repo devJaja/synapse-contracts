@@ -372,7 +372,6 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
     }
 
     // TODO(#41): add `get_admin()` query
-    // TODO(#43): add `get_min_deposit()` query
     // TODO(#44): add `get_max_deposit()` query — DONE
 
     pub fn get_admin(env: Env) -> Address {
