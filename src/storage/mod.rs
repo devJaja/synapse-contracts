@@ -104,7 +104,9 @@ pub mod max_deposit {
         env.storage().instance().get(&StorageKey::MaxDeposit)
     }
     pub fn set(env: &Env, amount: &i128) {
-        env.storage().instance().set(&StorageKey::MaxDeposit, amount);
+        env.storage()
+            .instance()
+            .set(&StorageKey::MaxDeposit, amount);
     }
 }
 
