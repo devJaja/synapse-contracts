@@ -298,6 +298,14 @@ fn add_and_remove_asset() {
 }
 
 #[test]
+#[should_panic(expected = "asset not in allowlist")]
+fn remove_asset_rejects_unlisted_asset() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    client.remove_asset(&admin, &usd(&env));
+}
+
+#[test]
 #[should_panic(expected = "asset not allowed")]
 fn register_deposit_rejects_unlisted_asset() {
     let env = Env::default();
