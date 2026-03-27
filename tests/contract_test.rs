@@ -627,6 +627,7 @@ fn mark_processing_panics_when_failed() {
 
 // TODO(#25): test Processing→Completed guard
 
+// #26: Completed→Failed transition guard
 #[test]
 #[should_panic(expected = "cannot fail completed transaction")]
 fn mark_failed_panics_when_transaction_completed() {
