@@ -181,7 +181,6 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
 
     // TODO(#15): enforce minimum deposit amount (configurable by admin)
     // TODO(#17): validate anchor_transaction_id is non-empty
-    // TODO(#18): add `memo` field support (mirrors synapse-core CallbackPayload)
     // TODO(#20): add `callback_type` field (deposit | withdrawal)
     pub fn register_deposit(
         env: Env,
@@ -200,17 +199,13 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
 
         if let Some(min) = min_deposit::get(&env) {
             if amount < min { panic!("amount below min deposit") }
+        }
         if let Some(max) = max_deposit::get(&env) {
             if amount > max {
                 panic!("amount exceeds max deposit")
             }
         }
 
-        if let Some(max) = max_deposit::get(&env) {
-            if amount > max {
-                panic!("amount exceeds max deposit")
-            }
-        }
         if let Some(existing) = deposits::find_by_anchor_id(&env, &anchor_transaction_id) {
             unlock_temp(&env, &anchor_transaction_id);
             return existing;
@@ -226,6 +221,7 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
             asset_code,
             memo,
             memo_type,
+            None, // callback_type
         );
         let id = tx.id.clone();
         deposits::save(&env, &tx);
