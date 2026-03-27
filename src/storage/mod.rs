@@ -114,8 +114,6 @@ pub mod assets {
     }
 }
 
-pub mod max_deposit {
-    use super::*;
 
     pub fn set(env: &Env, amount: &i128) {
         env.storage()
@@ -239,3 +237,33 @@ pub mod limits {
         env.storage().instance().get(&StorageKey::MinDeposit).unwrap_or(0)
     }
 }
+
+pub mod temp_lock {
+    use super::*;
+
+    const TEMP_LOCK_THRESHOLD: u32 = 3600;
+    const TEMP_LOCK_EXTEND_TO: u32 = 7200;
+
+    pub fn lock(env: &Env, key: &SorobanString) {
+        let lock_key = StorageKey::TempLock(key.clone());
+        if env.storage().temporary().has(&lock_key) {
+            panic!("idempotency lock active");
+        }
+        env.storage().temporary().set(&lock_key, &true);
+        env.storage()
+            .temporary()
+            .extend_ttl(&lock_key, TEMP_LOCK_THRESHOLD, TEMP_LOCK_EXTEND_TO);
+    }
+
+    pub fn unlock(env: &Env, key: &SorobanString) {
+        let lock_key = StorageKey::TempLock(key.clone());
+        env.storage().temporary().remove(&lock_key);
+    }
+
+    pub fn is_locked(env: &Env, key: &SorobanString) -> bool {
+        env.storage().temporary().has(&StorageKey::TempLock(key.clone()))
+    }
+}
+
+pub use temp_lock::{lock as lock_temp, unlock as unlock_temp, is_locked as is_temp_locked};
+

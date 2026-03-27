@@ -186,6 +186,7 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
             }
         }
         if let Some(existing) = deposits::find_by_anchor_id(&env, &anchor_transaction_id) {
+            unlock_temp(&env, &anchor_transaction_id);
             return existing;
         }
 
