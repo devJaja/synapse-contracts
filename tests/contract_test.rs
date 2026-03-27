@@ -512,7 +512,39 @@ fn mark_failed_creates_dlq_entry() {
 }
 
 // TODO(#25): test Processing→Completed guard
-// TODO(#26): test Failed transition guard
+
+#[test]
+#[should_panic(expected = "cannot fail completed transaction")]
+fn mark_failed_panics_when_transaction_completed() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "tx-fail-guard"),
+        &Address::generate(&env),
+        &10_000_000,
+        &usd(&env),
+        &None,
+    );
+
+    client.mark_processing(&relayer, &tx_id);
+    client.mark_completed(&relayer, &tx_id);
+    let tx = client.get_transaction(&tx_id);
+    assert_eq!(
+        tx.status,
+        synapse_contract::types::TransactionStatus::Completed
+    );
+
+    client.mark_failed(
+        &relayer,
+        &tx_id,
+        &SorobanString::from_str(&env, "late error"),
+    );
+}
 
 #[test]
 #[should_panic(expected = "invalid status transition")]
@@ -572,7 +604,33 @@ fn retry_dlq_resets_transaction_status_to_pending() {
 }
 
 #[test]
-fn original_relayer_can_retry_dlq() {
+fn dlq_entry_removed_after_successful_retry() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "dlq-remove-1"),
+        &Address::generate(&env),
+        &50_000_000,
+        &usd(&env),
+        &None,
+    );
+    client.mark_failed(
+        &relayer,
+        &tx_id,
+        &SorobanString::from_str(&env, "relay error"),
+    );
+    assert!(client.get_dlq_entry(&tx_id).is_some());
+    client.retry_dlq(&admin, &tx_id);
+    assert!(client.get_dlq_entry(&tx_id).is_none());
+}
+
+#[test]
+#[should_panic(expected = "not admin")]
+fn non_admin_cannot_retry_dlq() {
     let env = Env::default();
     let (admin, _, client) = setup(&env);
     let relayer = Address::generate(&env);

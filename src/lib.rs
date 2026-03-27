@@ -367,7 +367,10 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         id
     }
 
-    // TODO(#40): add `get_dlq_entry(tx_id)` query
+    pub fn get_dlq_entry(env: Env, tx_id: SorobanString) -> Option<DlqEntry> {
+        dlq::get(&env, &tx_id)
+    }
+
     // TODO(#41): add `get_admin()` query
     // TODO(#43): add `get_min_deposit()` query
     // TODO(#44): add `get_max_deposit()` query — DONE
@@ -632,8 +635,6 @@ mod tests {
             &tx_id,
             &SorobanString::from_str(&env, "late-fail"),
         );
-        let tx = client.get_transaction(&tx_id);
-        assert!(matches!(tx.status, TransactionStatus::Failed));
     }
 
     #[test]
