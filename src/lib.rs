@@ -269,7 +269,7 @@ impl SynapseContract {
         while i < n {
             let tx_id = tx_ids.get(i).unwrap();
             let tx = deposits::get(&env, &tx_id);
-            if tx.settlement_id.len() > 0 {
+            if !tx.settlement_id.is_empty() {
                 panic!("transaction already settled");
             }
             i += 1;

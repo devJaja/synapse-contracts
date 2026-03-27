@@ -148,9 +148,11 @@ pub mod settlements {
     pub fn save(env: &Env, s: &Settlement) {
         let key = StorageKey::Settlement(s.id.clone());
         env.storage().persistent().set(&key, s);
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, SETTLEMENT_TTL_THRESHOLD, SETTLEMENT_TTL_EXTEND_TO);
+        env.storage().persistent().extend_ttl(
+            &key,
+            SETTLEMENT_TTL_THRESHOLD,
+            SETTLEMENT_TTL_EXTEND_TO,
+        );
     }
     pub fn get(env: &Env, id: &SorobanString) -> Settlement {
         env.storage()
