@@ -423,17 +423,16 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         dlq::get(&env, &tx_id)
     }
 
+    pub fn get_dlq_count(env: Env) -> i128 {
+        dlq::get_count(&env)
+    }
+
     // TODO(#41): add `get_admin()` query
     // TODO(#43): add `get_min_deposit()` query — DONE
     // TODO(#44): add `get_max_deposit()` query — DONE
 
     pub fn get_admin(env: Env) -> Address {
         storage::admin::get(&env)
-    }
-
-    /// Get the current admin address
-    pub fn get_admin(env: Env) -> Address {
-        admin::get(&env)
     }
 
     pub fn is_paused(env: Env) -> bool {
@@ -454,10 +453,6 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
 
     pub fn is_relayer(env: Env, address: Address) -> bool {
         relayers::has(&env, &address)
-    }
-
-    pub fn is_paused(env: Env) -> bool {
-        storage::pause::is_paused(&env)
     }
 
 }
@@ -1069,7 +1064,7 @@ mod tests {
         let asset = SorobanString::from_str(&env, "USD");
         client.grant_relayer(&admin, &relayer);
         client.add_asset(&admin, &asset);
-        client.register_deposit(&relayer, &SorobanString::from_str(&env, ""), &stellar, &100i128, &asset, &None);
+        client.register_deposit(&relayer, &SorobanString::from_str(&env, ""), &stellar, &100i128, &asset, &None, &None);
     }
 
     #[test]
@@ -1130,7 +1125,7 @@ mod tests {
         client.grant_relayer(&admin, &relayer);
         client.add_asset(&admin, &asset);
         let tx_id =
-            client.register_deposit(&relayer, &anchor_id, &stellar, &100i128, &asset, &None);
+            client.register_deposit(&relayer, &anchor_id, &stellar, &100i128, &asset, &None, &None);
 
         client.mark_processing(&relayer, &tx_id);
         client.mark_completed(&relayer, &tx_id);
@@ -1176,6 +1171,9 @@ mod tests {
         let (admin, contract_id) = setup(&env);
         let client = SynapseContractClient::new(&env, &contract_id);
         client.add_asset(&admin, &SorobanString::from_str(&env, "US$"));
+    }
+
+    #[test]
     fn test_cancel_transaction_success() {
         let env = Env::default();
         let (admin, contract_id) = setup(&env);
@@ -1187,8 +1185,9 @@ mod tests {
 
         client.grant_relayer(&admin, &relayer);
         client.add_asset(&admin, &asset);
-        let tx_id =
-            client.register_deposit(&relayer, &anchor_id, &stellar, &100i128, &asset, &None);
+        let tx_id = client.register_deposit(
+            &relayer, &anchor_id, &stellar, &100i128, &asset, &None, &None,
+        );
 
         // Cancel the transaction
         client.cancel_transaction(&admin, &tx_id);
@@ -1221,7 +1220,7 @@ mod tests {
         client.grant_relayer(&admin, &relayer);
         client.add_asset(&admin, &asset);
         let tx_id =
-            client.register_deposit(&relayer, &anchor_id, &stellar, &100i128, &asset, &None);
+            client.register_deposit(&relayer, &anchor_id, &stellar, &100i128, &asset, &None, &None);
 
         client.mark_processing(&relayer, &tx_id);
         client.mark_completed(&relayer, &tx_id);
@@ -1241,8 +1240,6 @@ mod tests {
             &1u64,
             &2u64,
         );
-
-        client.finalize_settlement(&relayer, &asset, &vec![&env, tx_id], &100i128, &1u64, &2u64);
     }
 
     // -----------------------------------------------------------------------
