@@ -5,7 +5,11 @@ use soroban_sdk::{
     testutils::{Address as _, Events as _},
     vec, Address, Env, IntoVal, String as SorobanString, TryFromVal, Val,
 };
-use synapse_contract::{types::Event, SynapseContract, SynapseContractClient};
+use synapse_contract::{
+    types::{Event, MAX_RETRIES},
+    SynapseContract,
+    SynapseContractClient,
+};
 
 fn setup(env: &Env) -> (Address, Address, SynapseContractClient<'_>) {
     env.mock_all_auths();
@@ -504,7 +508,33 @@ fn unrelated_relayer_cannot_retry_dlq() {
 }
 
 // TODO(#31): test DlqRetried event emitted
-// TODO(#32): test max retry cap
+
+#[test]
+#[should_panic(expected = "max retries exceeded")]
+fn retry_dlq_panics_when_max_retries_exceeded() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "max-retry-cap"),
+        &Address::generate(&env),
+        &50_000_000,
+        &usd(&env),
+        &None,
+    );
+    client.mark_failed(
+        &relayer,
+        &tx_id,
+        &SorobanString::from_str(&env, "timeout"),
+    );
+    for _ in 0..MAX_RETRIES {
+        client.retry_dlq(&admin, &tx_id);
+    }
+    client.retry_dlq(&admin, &tx_id);
+}
 
 // ---------------------------------------------------------------------------
 // Settlement — TODO(#33)–(#39)

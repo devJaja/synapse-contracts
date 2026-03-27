@@ -11,7 +11,7 @@ use access::{require_admin, require_not_paused, require_relayer};
 use events::emit;
 use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
 use storage::{assets, deposits, dlq, max_deposit, relayers, settlements};
-use types::{DlqEntry, Event, Settlement, Transaction, TransactionStatus};
+use types::{DlqEntry, Event, Settlement, Transaction, TransactionStatus, MAX_RETRIES};
 
 #[contract]
 pub struct SynapseContract;
@@ -186,7 +186,6 @@ impl SynapseContract {
     }
 
     // TODO(#26): enforce transition guard — must be Pending or Processing
-    // TODO(#27): cap max retry_count; emit `MaxRetriesExceeded` when hit
     // TODO(#28): validate error_reason is non-empty
     pub fn mark_failed(
         env: Env,
@@ -205,7 +204,6 @@ impl SynapseContract {
         emit(&env, Event::MovedToDlq(tx_id, error_reason));
     }
 
-    // TODO(#29): increment retry_count on DlqEntry
     // TODO(#31): emit `DlqRetried` event
     pub fn retry_dlq(env: Env, caller: Address, tx_id: SorobanString) {
         require_not_paused(&env);
@@ -215,6 +213,11 @@ impl SynapseContract {
             panic!("not admin or original relayer");
         }
         let mut entry = dlq::get(&env, &tx_id).expect("dlq entry not found");
+
+        if entry.retry_count >= MAX_RETRIES {
+            emit(&env, Event::MaxRetriesExceeded(tx_id.clone()));
+            panic!("max retries exceeded");
+        }
 
         tx.status = TransactionStatus::Pending;
         tx.updated_ledger = env.ledger().sequence();
