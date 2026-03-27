@@ -198,7 +198,6 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
             tx_id,
             anchor_transaction_id.clone(),
             stellar_account,
-            caller,
             amount,
             asset_code,
             memo,
