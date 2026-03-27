@@ -35,7 +35,6 @@ pub struct Transaction {
 impl Transaction {
     pub fn new(
         env: &Env,
-        id: SorobanString,
         anchor_transaction_id: SorobanString,
         stellar_account: Address,
         relayer: Address,
@@ -46,6 +45,7 @@ impl Transaction {
         callback_type: Option<SorobanString>,
     ) -> Self {
         let ledger = env.ledger().sequence();
+        let id = generate_transaction_id(env, &anchor_transaction_id);
         Self {
             id,
             anchor_transaction_id,
@@ -122,14 +122,13 @@ impl DlqEntry {
 
 /// Contract events - one variant per state change.
 // TODO(#54): add `ContractPaused` / `ContractUnpaused` variants
-// TODO(#55): add `DlqRetried(SorobanString)` variant
-// TODO(#56): add `MaxRetriesExceeded(SorobanString)` variant
-// TODO(#57): add `AdminTransferred(Address, Address)` variant
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
     // Lifecycle
     Initialized(Address),                                    // (admin)
+    AdminTransferred(Address, Address),                      // (old_admin, new_admin)
+    AdminTransferProposed(Address, Address),                 // (current_admin, proposed_admin)
 
     // Relayer management
     RelayerGranted(Address),                                 // (relayer)
