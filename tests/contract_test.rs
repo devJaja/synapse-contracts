@@ -146,6 +146,59 @@ fn pause_and_unpause() {
 }
 
 #[test]
+fn pause_emits_event() {
+    let env = Env::default();
+    let (admin, contract_id, client) = setup(&env);
+
+    client.pause(&admin);
+
+    let all_events = env.events().all();
+    let topics: soroban_sdk::Vec<Val> = (symbol_short!("synapse"),).into_val(&env);
+    let ledger = env.ledger().sequence();
+    let event_count = all_events.len();
+    let (event_contract, event_topics, event_data_val) = all_events.get(event_count - 1).unwrap();
+
+    assert_eq!(event_contract, contract_id);
+    assert_eq!(event_topics, topics);
+    assert_eq!(
+        event_data(&env, event_data_val),
+        (Event::ContractPaused(admin), ledger),
+    );
+}
+
+#[test]
+fn unpause_emits_event() {
+    let env = Env::default();
+    let (admin, contract_id, client) = setup(&env);
+
+    client.pause(&admin);
+    client.unpause(&admin);
+
+    let all_events = env.events().all();
+    let topics: soroban_sdk::Vec<Val> = (symbol_short!("synapse"),).into_val(&env);
+    let ledger = env.ledger().sequence();
+    let event_count = all_events.len();
+    let (event_contract, event_topics, event_data_val) = all_events.get(event_count - 1).unwrap();
+
+    assert_eq!(event_contract, contract_id);
+    assert_eq!(event_topics, topics);
+    assert_eq!(
+        event_data(&env, event_data_val),
+        (Event::ContractUnpaused(admin), ledger),
+    );
+}
+
+#[test]
+#[should_panic(expected = "contract paused")]
+fn grant_relayer_panics_when_paused() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+
+    client.pause(&admin);
+    client.grant_relayer(&admin, &Address::generate(&env));
+}
+
+#[test]
 #[should_panic(expected = "contract paused")]
 fn register_deposit_panics_when_paused() {
     let env = Env::default();
