@@ -1108,6 +1108,14 @@ fn finalize_settlement_with_single_tx_correct_total() {
 }
 
 #[test]
+#[should_panic(expected = "settlement not found")]
+fn get_settlement_panics_when_not_found() {
+    let env = Env::default();
+    let (_, _, client) = setup(&env);
+    client.get_settlement(&SorobanString::from_str(&env, "nonexistent"));
+}
+
+#[test]
 fn retry_dlq_panics_until_implemented() {
     // placeholder — retry_dlq is implemented, this test is now a no-op
 }
