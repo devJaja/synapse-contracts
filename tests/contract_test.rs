@@ -710,3 +710,57 @@ fn get_dlq_count_decrements_on_retry_dlq() {
     client.retry_dlq(&admin, &tx1);
     assert_eq!(client.get_dlq_count(), 1);
 }
+
+// ---------------------------------------------------------------------------
+// Paused mutating calls — issue #70 (remaining functions)
+// ---------------------------------------------------------------------------
+
+#[test]
+#[should_panic(expected = "contract paused")]
+fn set_min_deposit_panics_when_paused() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    client.pause(&admin);
+    client.set_min_deposit(&admin, &100_000_000);
+}
+
+#[test]
+#[should_panic(expected = "contract paused")]
+fn propose_admin_panics_when_paused() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    client.pause(&admin);
+    client.propose_admin(&admin, &Address::generate(&env));
+}
+
+#[test]
+#[should_panic(expected = "contract paused")]
+fn accept_admin_panics_when_paused() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let new_admin = Address::generate(&env);
+    client.propose_admin(&admin, &new_admin);
+    client.pause(&admin);
+    client.accept_admin(&new_admin);
+}
+
+#[test]
+#[should_panic(expected = "contract paused")]
+fn cancel_transaction_panics_when_paused() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "paused-cancel"),
+        &Address::generate(&env),
+        &50_000_000,
+        &usd(&env),
+        &None,
+        &None,
+    );
+    client.pause(&admin);
+    client.cancel_transaction(&admin, &tx_id);
+}
