@@ -44,9 +44,8 @@ impl SynapseContract {
     pub fn transfer_admin(env: Env, caller: Address, new_admin: Address) {
         require_not_paused(&env);
         require_admin(&env, &caller);
-        let old_admin = storage::admin::get(&env);
         storage::admin::set(&env, &new_admin);
-        emit(&env, Event::AdminTransferred(old_admin, new_admin));
+        emit(&env, Event::AdminTransferAccepted(caller, new_admin));
     }
 
     pub fn propose_admin(env: Env, caller: Address, new_admin: Address) {
@@ -295,6 +294,14 @@ impl SynapseContract {
         require_relayer(&env, &caller);
         if period_start > period_end {
             panic!("period_start must be <= period_end")
+        }
+        let mut sum: i128 = 0;
+        for tx_id in tx_ids.iter() {
+            let tx = deposits::get(&env, &tx_id);
+            sum = sum.checked_add(tx.amount).expect("amount overflow");
+        }
+        if sum != total_amount {
+            panic!("total_amount mismatch");
         }
         let settlement_id = next_id(&env, symbol_short!("stlnonce"));
         let s = Settlement::new(

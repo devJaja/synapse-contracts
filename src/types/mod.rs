@@ -143,10 +143,12 @@ pub enum Event {
     Settled(SorobanString, SorobanString),                   // (tx_id, settlement_id)
     AssetAdded(SorobanString),
     AssetRemoved(SorobanString),
+    AdminTransferProposed(Address),
+    AdminTransferAccepted(Address, Address),
+    TransactionCancelled(SorobanString),
 }
 
-fn generate_transaction_id(env: &Env, anchor_transaction_id: &SorobanString) -> SorobanString {
-    // Deterministic ID: sha256(anchor_transaction_id), encoded hex.
+pub fn generate_transaction_id(env: &Env, anchor_transaction_id: &SorobanString) -> SorobanString {
     let anchor_bytes = anchor_transaction_id.to_string().into_bytes();
     let hash = env.crypto().sha256(&soroban_sdk::Bytes::from_slice(env, &anchor_bytes));
     let bytes = hash.to_array();
