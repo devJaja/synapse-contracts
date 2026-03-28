@@ -305,6 +305,14 @@ fn add_and_remove_asset() {
 }
 
 #[test]
+#[should_panic(expected = "asset_code must not exceed 12 characters")]
+fn add_asset_panics_if_code_too_long() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    client.add_asset(&admin, &SorobanString::from_str(&env, "VERYLONGASSETCODE"));
+}
+
+#[test]
 #[should_panic(expected = "asset not in allowlist")]
 fn remove_asset_rejects_unlisted_asset() {
     let env = Env::default();
