@@ -12,8 +12,7 @@ use access::{
 };
 use events::emit;
 use soroban_sdk::{
-    contract, contractimpl, symbol_short, Address, Bytes, Env, String as SorobanString, Symbol,
-    Vec,
+    contract, contractimpl, symbol_short, Address, Bytes, Env, String as SorobanString, Symbol, Vec,
 };
 use storage::{
     admin, assets, deposits, dlq, max_deposit, min_deposit, pending_admin, relayers, settlements,

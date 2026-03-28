@@ -284,7 +284,10 @@ fn full_lifecycle_pending_to_completed() {
     let tx_id = register(&env, &client, &relayer, "lifecycle-1", 50_000_000);
     client.mark_processing(&relayer, &tx_id);
     client.mark_completed(&relayer, &tx_id);
-    assert_eq!(client.get_transaction(&tx_id).status, TransactionStatus::Completed);
+    assert_eq!(
+        client.get_transaction(&tx_id).status,
+        TransactionStatus::Completed
+    );
 }
 
 #[test]
@@ -310,11 +313,9 @@ fn mark_failed_creates_dlq_entry() {
 fn get_dlq_entry_returns_none_when_not_found() {
     let env = Env::default();
     let (_, _, client) = setup(&env);
-    assert!(
-        client
-            .get_dlq_entry(&SorobanString::from_str(&env, "missing"))
-            .is_none()
-    );
+    assert!(client
+        .get_dlq_entry(&SorobanString::from_str(&env, "missing"))
+        .is_none());
 }
 
 #[test]
@@ -509,7 +510,10 @@ fn finalize_settlement_stores_record_and_backref() {
         &0u64,
         &1u64,
     );
-    assert_eq!(client.get_settlement(&settlement_id).total_amount, 100_000_000);
+    assert_eq!(
+        client.get_settlement(&settlement_id).total_amount,
+        100_000_000
+    );
     assert_eq!(client.get_transaction(&tx_id).settlement_id, settlement_id);
 }
 

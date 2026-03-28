@@ -24,7 +24,9 @@ pub enum StorageKey {
 }
 
 fn extend_instance_ttl(env: &Env) {
-    env.storage().instance().extend_ttl(TX_TTL_THRESHOLD, TX_TTL_EXTEND_TO);
+    env.storage()
+        .instance()
+        .extend_ttl(TX_TTL_THRESHOLD, TX_TTL_EXTEND_TO);
 }
 
 fn extend_persistent_ttl(env: &Env, key: &StorageKey) {
@@ -117,7 +119,9 @@ pub mod assets {
     }
 
     fn set_count(env: &Env, count: u32) {
-        env.storage().instance().set(&StorageKey::AssetCount, &count);
+        env.storage()
+            .instance()
+            .set(&StorageKey::AssetCount, &count);
     }
 
     pub fn add(env: &Env, code: &SorobanString) {
@@ -234,9 +238,11 @@ pub mod settlements {
     pub fn save(env: &Env, settlement: &Settlement) {
         let key = StorageKey::Settlement(settlement.id.clone());
         env.storage().persistent().set(&key, settlement);
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, SETTLEMENT_TTL_THRESHOLD, SETTLEMENT_TTL_EXTEND_TO);
+        env.storage().persistent().extend_ttl(
+            &key,
+            SETTLEMENT_TTL_THRESHOLD,
+            SETTLEMENT_TTL_EXTEND_TO,
+        );
     }
 
     pub fn get(env: &Env, id: &SorobanString) -> Settlement {
@@ -246,9 +252,11 @@ pub mod settlements {
             .persistent()
             .get(&key)
             .expect("settlement not found");
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, SETTLEMENT_TTL_THRESHOLD, SETTLEMENT_TTL_EXTEND_TO);
+        env.storage().persistent().extend_ttl(
+            &key,
+            SETTLEMENT_TTL_THRESHOLD,
+            SETTLEMENT_TTL_EXTEND_TO,
+        );
         settlement
     }
 }
