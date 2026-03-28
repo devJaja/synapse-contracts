@@ -43,9 +43,10 @@ fn next_id(env: &Env, counter_key: Symbol) -> SorobanString {
 }
 
 fn tx_id_from_anchor(env: &Env, anchor_transaction_id: &SorobanString) -> SorobanString {
-    use alloc::string::ToString;
-    let anchor_bytes = anchor_transaction_id.to_string().into_bytes();
-    let hash = env.crypto().sha256(&Bytes::from_slice(env, &anchor_bytes));
+    let len = anchor_transaction_id.len() as usize;
+    let mut buf = [0u8; 256];
+    anchor_transaction_id.copy_into_slice(&mut buf[..len]);
+    let hash = env.crypto().sha256(&Bytes::from_slice(env, &buf[..len]));
     let bytes = hash.to_array();
     let mut hex = [0u8; 64];
     const HEX: &[u8] = b"0123456789abcdef";
