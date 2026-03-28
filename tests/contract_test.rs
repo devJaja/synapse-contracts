@@ -1102,3 +1102,25 @@ fn mark_failed_panics_when_error_reason_is_empty() {
     );
     client.mark_failed(&relayer, &tx_id, &SorobanString::from_str(&env, ""));
 }
+
+// ---------------------------------------------------------------------------
+// Asset cap — regression for #13
+// ---------------------------------------------------------------------------
+
+#[test]
+#[should_panic(expected = "asset cap reached")]
+fn add_asset_panics_when_cap_is_reached() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    // asset codes: A0..A9, B0..B9 = 20 assets (the cap)
+    for i in 0u8..10 {
+        let code = SorobanString::from_str(&env, &format!("A{}", i));
+        client.add_asset(&admin, &code);
+    }
+    for i in 0u8..10 {
+        let code = SorobanString::from_str(&env, &format!("B{}", i));
+        client.add_asset(&admin, &code);
+    }
+    // 21st asset — must panic
+    client.add_asset(&admin, &SorobanString::from_str(&env, "C0"));
+}
