@@ -140,12 +140,6 @@ pub mod assets {
             .instance()
             .has(&StorageKey::Asset(code.clone()))
     }
-
-    pub fn require_allowed(env: &Env, code: &SorobanString) {
-        if !is_allowed(env, code) {
-            panic!("asset not allowed")
-        }
-    }
 }
 
 pub mod min_deposit {

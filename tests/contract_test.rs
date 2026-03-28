@@ -330,6 +330,47 @@ fn register_deposit_rejects_unlisted_asset() {
     );
 }
 
+// issue-1: asset_code in register_deposit must be in the allowlist
+#[test]
+#[should_panic(expected = "asset not allowed")]
+fn register_deposit_panics_with_asset_not_allowed_message() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    // EUR is never added to the allowlist
+    client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "eur-unlisted"),
+        &Address::generate(&env),
+        &100_000_000,
+        &SorobanString::from_str(&env, "EUR"),
+        &None,
+        &None,
+    );
+}
+
+#[test]
+fn register_deposit_succeeds_after_asset_added_to_allowlist() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    let eur = SorobanString::from_str(&env, "EUR");
+    client.add_asset(&admin, &eur);
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "eur-allowed"),
+        &Address::generate(&env),
+        &100_000_000,
+        &eur,
+        &None,
+        &None,
+    );
+    let tx = client.get_transaction(&tx_id);
+    assert_eq!(tx.asset_code, eur);
+}
+
 // ---------------------------------------------------------------------------
 // Deposit registration
 // ---------------------------------------------------------------------------
