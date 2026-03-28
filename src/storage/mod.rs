@@ -158,7 +158,12 @@ pub mod deposits {
     }
 
     pub fn find_by_anchor_id(env: &Env, anchor_id: &SorobanString) -> Option<SorobanString> {
-        env.storage().persistent().get(&StorageKey::AnchorIdx(anchor_id.clone()))
+        let key = StorageKey::AnchorIdx(anchor_id.clone());
+        let val = env.storage().persistent().get(&key);
+        if val.is_some() {
+            extend_persistent_ttl(env, &key);
+        }
+        val
     }
 }
 

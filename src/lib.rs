@@ -37,7 +37,9 @@ impl SynapseContract {
     pub fn revoke_relayer(env: Env, caller: Address, relayer: Address) {
         require_not_paused(&env);
         require_admin(&env, &caller);
-        if !relayers::has(&env, &relayer) { panic!("address is not a relayer") }
+        if !relayers::has(&env, &relayer) {
+            panic!("address is not a relayer")
+        }
         relayers::remove(&env, &relayer);
     }
 
@@ -116,6 +118,10 @@ impl SynapseContract {
         emit(&env, Event::AssetRemoved(asset_code));
     }
 
+    pub fn is_asset_allowed(env: Env, asset_code: SorobanString) -> bool {
+        assets::is_allowed(&env, &asset_code)
+    }
+
     pub fn set_min_deposit(env: Env, caller: Address, amount: i128) {
         require_not_paused(&env);
         require_admin(&env, &caller);
@@ -157,7 +163,9 @@ impl SynapseContract {
     ) -> SorobanString {
         require_not_paused(&env);
         require_relayer(&env, &caller);
-        if anchor_transaction_id.len() == 0 { panic!("anchor_transaction_id must not be empty") }
+        if anchor_transaction_id.len() == 0 {
+            panic!("anchor_transaction_id must not be empty")
+        }
         assets::require_allowed(&env, &asset_code);
 
         if let Some(min) = min_deposit::get(&env) {
@@ -187,6 +195,10 @@ impl SynapseContract {
         deposits::index_anchor_id(&env, &anchor_transaction_id, &id);
         emit(&env, Event::DepositRegistered(id.clone(), anchor_transaction_id));
         id
+    }
+
+    pub fn get_transaction(env: Env, tx_id: SorobanString) -> Transaction {
+        deposits::get(&env, &tx_id)
     }
 
     pub fn mark_processing(env: Env, caller: Address, tx_id: SorobanString) {
@@ -360,8 +372,8 @@ impl SynapseContract {
         settlements::get(&env, &settlement_id)
     }
 
-    pub fn is_asset_allowed(env: Env, asset_code: SorobanString) -> bool {
-        assets::is_allowed(&env, &asset_code)
+    pub fn get_dlq_entry(env: Env, tx_id: SorobanString) -> Option<DlqEntry> {
+        dlq::get(&env, &tx_id)
     }
 
     pub fn is_relayer(env: Env, address: Address) -> bool {
