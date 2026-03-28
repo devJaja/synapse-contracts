@@ -53,6 +53,21 @@ fn initialize_sets_admin() {
 }
 
 #[test]
+fn is_initialized_reflects_bootstrap_state() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let id = env.register_contract(None, SynapseContract);
+    let client = SynapseContractClient::new(&env, &id);
+    let admin = Address::generate(&env);
+
+    assert!(!client.is_initialized());
+
+    client.initialize(&admin);
+
+    assert!(client.is_initialized());
+}
+
+#[test]
 #[should_panic(expected = "already initialised")]
 fn initialize_twice_panics() {
     let env = Env::default();

@@ -489,6 +489,10 @@ impl SynapseContract {
         dlq::get_count(&env)
     }
 
+    pub fn is_initialized(env: Env) -> bool {
+        env.storage().instance().has(&storage::StorageKey::Admin)
+    }
+
     pub fn get_admin(env: Env) -> Address {
         storage::admin::get(&env)
     }
