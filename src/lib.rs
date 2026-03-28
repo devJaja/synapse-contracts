@@ -158,6 +158,7 @@ impl SynapseContract {
             panic!("min deposit must be positive")
         }
         min_deposit::set(&env, &amount);
+        emit(&env, Event::MinDepositUpdated(amount));
     }
 
     pub fn get_min_deposit(env: Env) -> Option<i128> {

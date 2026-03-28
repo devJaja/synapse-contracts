@@ -155,6 +155,9 @@ pub enum Event {
     AssetAdded(SorobanString),
     AssetRemoved(SorobanString),
 
+    // Config
+    MinDepositUpdated(i128),
+
     // Webhook — emitted on terminal state transitions for external indexers
     TransactionCompleted(SorobanString, Address, i128, SorobanString), // (tx_id, stellar_account, amount, asset_code)
     TransactionFailed(SorobanString, Address, i128, SorobanString, SorobanString), // (tx_id, stellar_account, amount, asset_code, error_reason)

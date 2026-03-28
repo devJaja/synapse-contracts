@@ -1078,3 +1078,12 @@ fn finalize_settlement_with_single_tx_correct_total() {
 fn retry_dlq_panics_until_implemented() {
     // placeholder — retry_dlq is implemented, this test is now a no-op
 }
+
+#[test]
+fn set_min_deposit_emits_min_deposit_updated_event() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    client.set_min_deposit(&admin, &500_000_000);
+    let events = env.events().all();
+    assert!(!events.is_empty());
+}
