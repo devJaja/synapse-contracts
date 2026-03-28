@@ -128,7 +128,7 @@ pub enum Event {
     // Lifecycle
     Initialized(Address),
     AdminTransferred(Address, Address),
-    AdminTransferProposed(Address, Address),
+    AdminTransferProposed(Address),
 
     // Relayer management
     RelayerGranted(Address),

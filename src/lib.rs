@@ -89,7 +89,7 @@ impl SynapseContract {
         require_not_paused(&env);
         let current = admin::get(&env);
         set_pending_admin(&env, &caller, &new_admin);
-        emit(&env, Event::AdminTransferProposed(current, new_admin));
+        emit(&env, Event::AdminTransferProposed(new_admin));
     }
 
     pub fn accept_admin(env: Env, caller: Address) {
