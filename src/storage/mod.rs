@@ -48,8 +48,8 @@ pub mod admin {
 
 pub mod pending_admin {
     use super::*;
-    pub fn set(env: &Env, candidate: &Address) {
-        env.storage().instance().set(&StorageKey::PendingAdmin, candidate);
+    pub fn set(env: &Env, pending: &Address) {
+        env.storage().instance().set(&StorageKey::PendingAdmin, pending);
     }
     pub fn get(env: &Env) -> Option<Address> {
         env.storage().instance().get(&StorageKey::PendingAdmin)
@@ -91,17 +91,20 @@ pub mod assets {
         }
         env.storage().instance().set(&StorageKey::Asset(code.clone()), &true);
     }
-
     pub fn remove(env: &Env, code: &SorobanString) {
+        if !is_allowed(env, code) {
+            return;
+        }
         env.storage().instance().remove(&StorageKey::Asset(code.clone()));
+        set_count(env, count(env).saturating_sub(1));
     }
-
     pub fn is_allowed(env: &Env, code: &SorobanString) -> bool {
         env.storage().instance().has(&StorageKey::Asset(code.clone()))
     }
-
     pub fn require_allowed(env: &Env, code: &SorobanString) {
-        if !is_allowed(env, code) { panic!("asset not allowed") }
+        if !is_allowed(env, code) {
+            panic!("asset not allowed")
+        }
     }
 }
 
@@ -111,13 +114,12 @@ pub mod max_deposit {
     pub fn set(env: &Env, amount: &i128) {
         env.storage().instance().set(&StorageKey::MaxDeposit, amount);
     }
-
     pub fn get(env: &Env) -> Option<i128> {
-        env.storage().instance().get(&StorageKey::MaxDeposit)
+        env.storage().instance().get(&StorageKey::MinDeposit)
     }
 }
 
-pub mod min_deposit {
+pub mod max_deposit {
     use super::*;
 
     pub fn set(env: &Env, amount: i128) {

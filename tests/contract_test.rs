@@ -9,6 +9,7 @@ use synapse_contract::{
     types::{Event, MAX_RETRIES},
     SynapseContract, SynapseContractClient,
 };
+use synapse_contract::{SynapseContract, SynapseContractClient};
 
 fn setup(env: &Env) -> (Address, Address, SynapseContractClient<'_>) {
     env.mock_all_auths();
@@ -17,10 +18,6 @@ fn setup(env: &Env) -> (Address, Address, SynapseContractClient<'_>) {
     let admin = Address::generate(env);
     client.initialize(&admin);
     (admin, id, client)
-}
-
-fn event_data(env: &Env, raw: Val) -> (Event, u32) {
-    <(Event, u32)>::try_from_val(env, &raw).unwrap()
 }
 
 fn usd(env: &Env) -> SorobanString {
@@ -889,7 +886,7 @@ fn dlq_entry_removed_after_successful_retry() {
 }
 
 #[test]
-#[should_panic(expected = "not admin")]
+#[should_panic(expected = "not admin or original relayer")]
 fn non_admin_cannot_retry_dlq() {
     let env = Env::default();
     let (admin, _, client) = setup(&env);
@@ -912,7 +909,7 @@ fn non_admin_cannot_retry_dlq() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "not admin or original relayer")]
 fn unrelated_relayer_cannot_retry_dlq() {
     let env = Env::default();
     let (admin, _, client) = setup(&env);
@@ -969,6 +966,9 @@ fn retry_dlq_panics_when_max_retries_exceeded() {
     client.retry_dlq(&admin, &tx_id);
 }
 
+// TODO(#31): test DlqRetried event emitted
+// TODO: max-retries integration test once DLQ retention semantics support repeated retries
+
 // ---------------------------------------------------------------------------
 // Settlement
 // ---------------------------------------------------------------------------
@@ -1020,9 +1020,6 @@ fn finalize_settlement_emits_settlement_finalized_event() {
         &None,
         &None,
     );
-    client.mark_processing(&relayer, &tx_id_1);
-    client.mark_completed(&relayer, &tx_id_1);
-
     let tx_id_2 = client.register_deposit(
         &relayer,
         &SorobanString::from_str(&env, "a5"),
@@ -1032,13 +1029,15 @@ fn finalize_settlement_emits_settlement_finalized_event() {
         &None,
         &None,
     );
+    client.mark_processing(&relayer, &tx_id_1);
+    client.mark_completed(&relayer, &tx_id_1);
     client.mark_processing(&relayer, &tx_id_2);
     client.mark_completed(&relayer, &tx_id_2);
 
     let _settlement_id = client.finalize_settlement(
         &relayer,
         &usd(&env),
-        &vec![&env, tx_id_1, tx_id_2],
+        &vec![&env, tx_id_1.clone(), tx_id_2.clone()],
         &100_000_000,
         &0u64,
         &1u64,

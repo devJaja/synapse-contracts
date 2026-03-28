@@ -1,4 +1,4 @@
-use crate::storage::{admin, pause, pending_admin, relayers};
+use crate::storage::{admin, pause, relayers};
 use soroban_sdk::{Address, Env};
 
 pub fn require_admin(env: &Env, caller: &Address) {

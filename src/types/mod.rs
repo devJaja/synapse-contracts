@@ -13,7 +13,7 @@ pub enum TransactionStatus {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Transaction {
     pub id: SorobanString,
     pub anchor_transaction_id: SorobanString,
@@ -62,7 +62,7 @@ impl Transaction {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Settlement {
     pub id: SorobanString,
     pub asset_code: SorobanString,
@@ -96,7 +96,7 @@ impl Settlement {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DlqEntry {
     pub tx_id: SorobanString,
     pub error_reason: SorobanString,
