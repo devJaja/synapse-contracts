@@ -183,11 +183,7 @@ pub mod deposits {
 
     pub fn get(env: &Env, id: &SorobanString) -> Transaction {
         let key = StorageKey::Tx(id.clone());
-        let tx = env
-            .storage()
-            .persistent()
-            .get(&key)
-            .expect("tx not found");
+        let tx = env.storage().persistent().get(&key).expect("tx not found");
         extend_persistent_ttl(env, &key);
         tx
     }
@@ -234,11 +230,7 @@ pub mod dlq {
 
     pub fn push(env: &Env, entry: &DlqEntry) {
         let count_key = StorageKey::DlqCount(0i128);
-        let mut count: i128 = env
-            .storage()
-            .persistent()
-            .get(&count_key)
-            .unwrap_or(0i128);
+        let mut count: i128 = env.storage().persistent().get(&count_key).unwrap_or(0i128);
         count += 1;
         env.storage().persistent().set(&count_key, &count);
         extend_persistent_ttl(env, &count_key);
@@ -258,11 +250,7 @@ pub mod dlq {
 
     pub fn remove(env: &Env, tx_id: &SorobanString) {
         let count_key = StorageKey::DlqCount(0i128);
-        let mut count: i128 = env
-            .storage()
-            .persistent()
-            .get(&count_key)
-            .unwrap_or(0i128);
+        let mut count: i128 = env.storage().persistent().get(&count_key).unwrap_or(0i128);
         count = count.saturating_sub(1);
         env.storage().persistent().set(&count_key, &count);
         env.storage()
@@ -270,6 +258,7 @@ pub mod dlq {
             .remove(&StorageKey::Dlq(tx_id.clone()));
     }
 
+    #[allow(dead_code)]
     pub fn get_count(env: &Env) -> i128 {
         let key = StorageKey::DlqCount(0i128);
         let count = env.storage().persistent().get(&key).unwrap_or(0i128);
@@ -277,6 +266,7 @@ pub mod dlq {
         count
     }
 
+    #[allow(dead_code)]
     pub fn update(env: &Env, entry: &DlqEntry) {
         let key = StorageKey::Dlq(entry.tx_id.clone());
         env.storage().persistent().set(&key, entry);

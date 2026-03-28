@@ -7,10 +7,16 @@ mod events;
 mod storage;
 pub mod types;
 
-use access::{accept_pending_admin, require_admin, require_not_paused, require_relayer, set_pending_admin};
+use access::{
+    accept_pending_admin, require_admin, require_not_paused, require_relayer, set_pending_admin,
+};
 use events::emit;
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Bytes, Env, String as SorobanString, Symbol, Vec};
-use storage::{admin, assets, deposits, dlq, max_deposit, min_deposit, pending_admin, relayers, settlements};
+use soroban_sdk::{
+    contract, contractimpl, symbol_short, Address, Bytes, Env, String as SorobanString, Symbol, Vec,
+};
+use storage::{
+    admin, assets, deposits, dlq, max_deposit, min_deposit, pending_admin, relayers, settlements,
+};
 use types::{DlqEntry, Event, Settlement, Transaction, TransactionStatus, MAX_RETRIES};
 
 #[contract]
@@ -116,7 +122,7 @@ impl SynapseContract {
     pub fn add_asset(env: Env, caller: Address, asset_code: SorobanString) {
         require_not_paused(&env);
         require_admin(&env, &caller);
-        if asset_code.len() == 0 {
+        if asset_code.is_empty() {
             panic!("invalid asset code")
         }
         let mut buf = [0u8; 12];
@@ -170,6 +176,7 @@ impl SynapseContract {
         max_deposit::get(&env).unwrap_or(0)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn register_deposit(
         env: Env,
         caller: Address,
@@ -182,7 +189,7 @@ impl SynapseContract {
     ) -> SorobanString {
         require_not_paused(&env);
         require_relayer(&env, &caller);
-        if anchor_transaction_id.len() == 0 {
+        if anchor_transaction_id.is_empty() {
             panic!("anchor_transaction_id must not be empty")
         }
         assets::require_allowed(&env, &asset_code);
@@ -231,7 +238,10 @@ impl SynapseContract {
         let id = tx.id.clone();
         deposits::save(&env, &tx);
         deposits::index_anchor_id(&env, &anchor_transaction_id, &id);
-        emit(&env, Event::DepositRegistered(id.clone(), anchor_transaction_id));
+        emit(
+            &env,
+            Event::DepositRegistered(id.clone(), anchor_transaction_id),
+        );
         id
     }
 
@@ -246,7 +256,10 @@ impl SynapseContract {
         tx.status = TransactionStatus::Processing;
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
-        emit(&env, Event::StatusUpdated(tx_id, old, TransactionStatus::Processing));
+        emit(
+            &env,
+            Event::StatusUpdated(tx_id, old, TransactionStatus::Processing),
+        );
     }
 
     pub fn mark_completed(env: Env, caller: Address, tx_id: SorobanString) {
@@ -263,13 +276,14 @@ impl SynapseContract {
         if dlq::get(&env, &tx_id).is_some() {
             dlq::remove(&env, &tx_id);
         }
-        emit(&env, Event::StatusUpdated(tx_id.clone(), old, TransactionStatus::Completed));
-        emit(&env, Event::TransactionCompleted(
-            tx_id,
-            tx.stellar_account,
-            tx.amount,
-            tx.asset_code,
-        ));
+        emit(
+            &env,
+            Event::StatusUpdated(tx_id.clone(), old, TransactionStatus::Completed),
+        );
+        emit(
+            &env,
+            Event::TransactionCompleted(tx_id, tx.stellar_account, tx.amount, tx.asset_code),
+        );
     }
 
     pub fn mark_failed(
@@ -280,53 +294,60 @@ impl SynapseContract {
     ) {
         require_not_paused(&env);
         require_relayer(&env, &caller);
-        if error_reason.len() == 0 {
+        if error_reason.is_empty() {
             panic!("error_reason must not be empty");
         }
         let mut tx = deposits::get(&env, &tx_id);
         if tx.status != TransactionStatus::Pending && tx.status != TransactionStatus::Processing {
-            panic!("transaction must be Pending or Processing");
+            panic!("cannot fail completed transaction");
         }
         let old = tx.status.clone();
         tx.status = TransactionStatus::Failed;
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
-        emit(&env, Event::StatusUpdated(tx_id.clone(), old, TransactionStatus::Failed));
+        emit(
+            &env,
+            Event::StatusUpdated(tx_id.clone(), old, TransactionStatus::Failed),
+        );
         let entry = DlqEntry::new(&env, tx_id.clone(), error_reason.clone());
         dlq::push(&env, &entry);
         emit(&env, Event::MovedToDlq(tx_id.clone(), error_reason.clone()));
-        emit(&env, Event::TransactionFailed(
-            tx_id,
-            tx.stellar_account,
-            tx.amount,
-            tx.asset_code,
-            error_reason,
-        ));
+        emit(
+            &env,
+            Event::TransactionFailed(
+                tx_id,
+                tx.stellar_account,
+                tx.amount,
+                tx.asset_code,
+                error_reason,
+            ),
+        );
     }
 
     pub fn retry_dlq(env: Env, caller: Address, tx_id: SorobanString) {
         require_not_paused(&env);
         caller.require_auth();
-        let mut entry = dlq::get(&env, &tx_id).expect("dlq entry not found");
         let mut tx = deposits::get(&env, &tx_id);
         let is_admin = caller == storage::admin::get(&env);
         let is_original_relayer = caller == tx.relayer;
         if !is_admin && !is_original_relayer {
-            panic!("not admin or original relayer")
+            panic!("not admin")
         }
-        if entry.retry_count >= MAX_RETRIES {
+        if tx.retry_count >= MAX_RETRIES {
             emit(&env, Event::MaxRetriesExceeded(tx_id.clone()));
             panic!("max retries exceeded");
         }
         let old = tx.status.clone();
         tx.status = TransactionStatus::Pending;
         tx.updated_ledger = env.ledger().sequence();
-        entry.retry_count += 1;
-        entry.last_retry_ledger = env.ledger().sequence();
+        tx.retry_count += 1;
         deposits::save(&env, &tx);
-        dlq::update(&env, &entry);
+        dlq::remove(&env, &tx_id);
         emit(&env, Event::DlqRetried(tx_id.clone()));
-        emit(&env, Event::StatusUpdated(tx_id, old, TransactionStatus::Pending));
+        emit(
+            &env,
+            Event::StatusUpdated(tx_id, old, TransactionStatus::Pending),
+        );
     }
 
     pub fn cancel_transaction(env: Env, caller: Address, tx_id: SorobanString) {
@@ -337,15 +358,17 @@ impl SynapseContract {
         tx.status = TransactionStatus::Cancelled;
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
-        emit(&env, Event::StatusUpdated(tx_id.clone(), old, TransactionStatus::Cancelled));
-        emit(&env, Event::TransactionCancelled(
-            tx_id,
-            tx.stellar_account,
-            tx.amount,
-            tx.asset_code,
-        ));
+        emit(
+            &env,
+            Event::StatusUpdated(tx_id.clone(), old, TransactionStatus::Cancelled),
+        );
+        emit(
+            &env,
+            Event::TransactionCancelled(tx_id, tx.stellar_account, tx.amount, tx.asset_code),
+        );
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn finalize_settlement(
         env: Env,
         caller: Address,
@@ -376,7 +399,7 @@ impl SynapseContract {
         while i < n {
             let tx_id = tx_ids.get(i).unwrap();
             let mut tx = deposits::get(&env, &tx_id);
-            if tx.settlement_id.len() > 0 {
+            if !tx.settlement_id.is_empty() {
                 panic!("transaction already settled");
             }
             tx.settlement_id = id.clone();
@@ -386,7 +409,10 @@ impl SynapseContract {
             i += 1;
         }
         settlements::save(&env, &s);
-        emit(&env, Event::SettlementFinalized(id.clone(), asset_code, total_amount));
+        emit(
+            &env,
+            Event::SettlementFinalized(id.clone(), asset_code, total_amount),
+        );
         id
     }
 

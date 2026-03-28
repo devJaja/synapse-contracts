@@ -28,9 +28,11 @@ pub struct Transaction {
     pub created_ledger: u32,
     pub updated_ledger: u32,
     pub settlement_id: SorobanString,
+    pub retry_count: u32,
 }
 
 impl Transaction {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         env: &Env,
         id: SorobanString,
@@ -58,6 +60,7 @@ impl Transaction {
             created_ledger: ledger,
             updated_ledger: ledger,
             settlement_id: SorobanString::from_str(env, ""),
+            retry_count: 0,
         }
     }
 }
