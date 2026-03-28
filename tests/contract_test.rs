@@ -72,6 +72,28 @@ fn grant_and_revoke_relayer() {
 }
 
 #[test]
+fn grant_relayer_emits_event() {
+    let env = Env::default();
+    let (admin, contract_id, client) = setup(&env);
+    let relayer = Address::generate(&env);
+
+    client.grant_relayer(&admin, &relayer);
+
+    let all_events = env.events().all();
+    let topics: soroban_sdk::Vec<Val> = (symbol_short!("synapse"),).into_val(&env);
+    let ledger = env.ledger().sequence();
+    let event_count = all_events.len();
+    let (event_contract, event_topics, event_data_val) = all_events.get(event_count - 1).unwrap();
+
+    assert_eq!(event_contract, contract_id);
+    assert_eq!(event_topics, topics);
+    assert_eq!(
+        event_data(&env, event_data_val),
+        (Event::RelayerGranted(relayer), ledger),
+    );
+}
+
+#[test]
 #[should_panic(expected = "address is already a relayer")]
 fn grant_existing_relayer_panics() {
     let env = Env::default();
