@@ -1078,3 +1078,27 @@ fn finalize_settlement_with_single_tx_correct_total() {
 fn retry_dlq_panics_until_implemented() {
     // placeholder — retry_dlq is implemented, this test is now a no-op
 }
+
+// ---------------------------------------------------------------------------
+// mark_failed empty error_reason — regression for #28
+// ---------------------------------------------------------------------------
+
+#[test]
+#[should_panic(expected = "error_reason must not be empty")]
+fn mark_failed_panics_when_error_reason_is_empty() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "issue-119-empty-reason"),
+        &Address::generate(&env),
+        &50_000_000,
+        &usd(&env),
+        &None,
+        &None,
+    );
+    client.mark_failed(&relayer, &tx_id, &SorobanString::from_str(&env, ""));
+}
