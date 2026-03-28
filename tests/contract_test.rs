@@ -65,6 +65,31 @@ fn grant_and_revoke_relayer() {
 }
 
 #[test]
+fn get_relayer_count_tracks_active_relayers() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer_one = Address::generate(&env);
+    let relayer_two = Address::generate(&env);
+
+    assert_eq!(client.get_relayer_count(), 0);
+
+    client.grant_relayer(&admin, &relayer_one);
+    assert_eq!(client.get_relayer_count(), 1);
+
+    client.grant_relayer(&admin, &relayer_one);
+    assert_eq!(client.get_relayer_count(), 1);
+
+    client.grant_relayer(&admin, &relayer_two);
+    assert_eq!(client.get_relayer_count(), 2);
+
+    client.revoke_relayer(&admin, &relayer_one);
+    assert_eq!(client.get_relayer_count(), 1);
+
+    client.revoke_relayer(&admin, &relayer_two);
+    assert_eq!(client.get_relayer_count(), 0);
+}
+
+#[test]
 fn grant_relayer_emits_relayer_granted_event() {
     let env = Env::default();
     let (admin, _, client) = setup(&env);

@@ -448,4 +448,8 @@ impl SynapseContract {
     pub fn is_relayer(env: Env, address: Address) -> bool {
         relayers::has(&env, &address)
     }
+
+    pub fn get_relayer_count(env: Env) -> u32 {
+        relayers::count(&env)
+    }
 }
