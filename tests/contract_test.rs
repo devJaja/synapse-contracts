@@ -1080,8 +1080,8 @@ fn deposits_save_extends_ttl_on_every_status_update() {
         &50_000_000,
         &usd(&env),
         &None,
-    let tx_id = client.register_deposit(&relayer, &SorobanString::from_str(&env, "a7"),
-        &Address::generate(&env), &50_000_000, &usd(&env), &None, &None);
+        &None,
+    );
     let s_id = client.finalize_settlement(
         &relayer, &usd(&env), &vec![&env, tx_id], &50_000_000, &0u64, &1u64,
     );

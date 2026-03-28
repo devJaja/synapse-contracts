@@ -1,4 +1,6 @@
 use soroban_sdk::{contracttype, Address, Env, String as SorobanString, Vec};
+use crate::alloc::string::ToString;
+use alloc::format;
 
 pub const MAX_RETRIES: u32 = 5;
 
@@ -35,6 +37,7 @@ impl Transaction {
         env: &Env,
         anchor_transaction_id: SorobanString,
         stellar_account: Address,
+        relayer: Address,
         amount: i128,
         asset_code: SorobanString,
         memo: Option<SorobanString>,
@@ -130,7 +133,7 @@ pub enum Event {
     // Relayer management
     RelayerGranted(Address),                                 // (relayer)
     DepositRegistered(SorobanString, SorobanString),         // (tx_id, anchor_id)
-    StatusUpdated(SorobanString, TransactionStatus),        // (tx_id, new_status)
+    StatusUpdated(SorobanString, TransactionStatus, TransactionStatus), // (tx_id, old, new)
     SettlementFinalized(SorobanString, SorobanString, i128), // (settlement_id, asset_code, total)
 
     // Pause
@@ -140,10 +143,10 @@ pub enum Event {
     // DLQ
     MovedToDlq(SorobanString, SorobanString),                // (tx_id, error_reason)
     DlqRetried(SorobanString),                               // (tx_id)
+    MaxRetriesExceeded(SorobanString),                       // (tx_id)
     Settled(SorobanString, SorobanString),                   // (tx_id, settlement_id)
     AssetAdded(SorobanString),
     AssetRemoved(SorobanString),
-    AdminTransferProposed(Address),
     AdminTransferAccepted(Address, Address),
     TransactionCancelled(SorobanString),
 }
