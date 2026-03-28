@@ -131,8 +131,8 @@ pub enum Event {
     AdminTransferProposed(Address, Address),
 
     // Relayer management
-    RelayerGranted(Address),
-    RelayerRevoked(Address),
+    RelayerGranted(Address), // (relayer)
+    RelayerRevoked(Address), // (relayer)
 
     // Deposits
     DepositRegistered(SorobanString, SorobanString), // (tx_id, anchor_id)
