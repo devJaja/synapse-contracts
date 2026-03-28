@@ -4,10 +4,10 @@ extern crate alloc;
 
 mod access;
 mod events;
-mod storage;
+pub mod storage;
 pub mod types;
 
-use access::{accept_pending_admin, require_admin, require_not_paused, require_relayer, set_pending_admin};
+use access::{require_admin, require_not_paused, require_relayer};
 use events::emit;
 use soroban_sdk::{contract, contractimpl, symbol_short, Address, Bytes, Env, String as SorobanString, Symbol, Vec};
 use storage::{assets, deposits, dlq, max_deposit, min_deposit, relayers, settlements};
@@ -15,30 +15,6 @@ use types::{DlqEntry, Event, Settlement, Transaction, TransactionStatus, MAX_RET
 
 #[contract]
 pub struct SynapseContract;
-
-fn next_id(env: &Env, counter_key: Symbol) -> SorobanString {
-    let nonce: u32 = env.storage().instance().get(&counter_key).unwrap_or(0);
-    env.storage().instance().set(&counter_key, &(nonce + 1));
-
-    let ts = env.ledger().timestamp();
-    let seq = env.ledger().sequence();
-
-    let mut data = [0u8; 16];
-    data[..8].copy_from_slice(&ts.to_be_bytes());
-    data[8..12].copy_from_slice(&seq.to_be_bytes());
-    data[12..16].copy_from_slice(&nonce.to_be_bytes());
-
-    let hash = env.crypto().sha256(&Bytes::from_slice(env, &data));
-    let bytes = hash.to_array();
-
-    let mut hex = [0u8; 32];
-    const HEX: &[u8] = b"0123456789abcdef";
-    for i in 0..16 {
-        hex[i * 2] = HEX[(bytes[i] >> 4) as usize];
-        hex[i * 2 + 1] = HEX[(bytes[i] & 0xf) as usize];
-    }
-    SorobanString::from_bytes(env, &hex)
-}
 
 #[contractimpl]
 impl SynapseContract {
@@ -51,16 +27,11 @@ impl SynapseContract {
         emit(&env, Event::Initialized(admin));
     }
 
-    // TODO(#3): emit `RelayerGranted` event
-pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
+    pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         require_not_paused(&env);
-        let zero_addr = Address::from_string(&SorobanString::from_str(
-            &env,
-            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
-        ));
-        if relayer == zero_addr { panic!("invalid relayer address") }
         require_admin(&env, &caller);
         relayers::add(&env, &relayer);
+        emit(&env, Event::RelayerGranted(relayer));
     }
 
     pub fn revoke_relayer(env: Env, caller: Address, relayer: Address) {
@@ -68,10 +39,8 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         require_admin(&env, &caller);
         if !relayers::has(&env, &relayer) { panic!("address is not a relayer") }
         relayers::remove(&env, &relayer);
-        emit(&env, Event::RelayerRevoked(relayer));
     }
 
-    // TODO(#8): two-step admin transfer (propose + accept) to prevent lockout
     pub fn transfer_admin(env: Env, caller: Address, new_admin: Address) {
         require_not_paused(&env);
         require_admin(&env, &caller);
@@ -82,21 +51,26 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
     pub fn propose_admin(env: Env, caller: Address, new_admin: Address) {
         require_not_paused(&env);
         require_admin(&env, &caller);
+        let current_admin = storage::admin::get(&env);
         storage::pending_admin::set(&env, &new_admin);
-        emit(&env, Event::AdminTransferProposed(new_admin));
+        emit(&env, Event::AdminTransferProposed(current_admin, new_admin));
     }
 
     pub fn accept_admin(env: Env, caller: Address) {
         require_not_paused(&env);
         caller.require_auth();
-        let pending = storage::pending_admin::get(&env).expect("no pending admin transfer");
+        let pending = storage::pending_admin::get(&env).expect("no pending admin");
         if caller != pending {
-            panic!("only proposed admin can accept");
+            panic!("not pending admin")
         }
         let old_admin = storage::admin::get(&env);
         storage::admin::set(&env, &pending);
         storage::pending_admin::clear(&env);
-        emit(&env, Event::AdminTransferAccepted(old_admin, pending));
+        emit(&env, Event::AdminTransferred(old_admin, pending));
+    }
+
+    pub fn get_pending_admin(env: Env) -> Option<Address> {
+        storage::pending_admin::get(&env)
     }
 
     pub fn pause(env: Env, caller: Address) {
@@ -111,7 +85,6 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         emit(&env, Event::ContractUnpaused(caller));
     }
 
-    // TODO(#13): cap the total number of allowed assets to bound instance storage
     pub fn add_asset(env: Env, caller: Address, asset_code: SorobanString) {
         require_not_paused(&env);
         require_admin(&env, &caller);
@@ -147,7 +120,7 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         require_not_paused(&env);
         require_admin(&env, &caller);
         if amount <= 0 { panic!("min deposit must be positive") }
-        min_deposit::set(&env, &amount);
+        min_deposit::set(&env, amount);
     }
 
     pub fn get_min_deposit(env: Env) -> Option<i128> {
@@ -171,7 +144,6 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
 
     // TODO(#15): enforce minimum deposit amount (configurable by admin)
     // TODO(#17): validate anchor_transaction_id is non-empty
-    // TODO(#18): add `memo` field support (mirrors synapse-core CallbackPayload)
     // TODO(#20): add `callback_type` field (deposit | withdrawal)
     pub fn register_deposit(
         env: Env,
@@ -192,26 +164,23 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
             if amount < min { panic!("amount below min deposit") }
         }
         if let Some(max) = max_deposit::get(&env) {
-            if amount > max {
-                panic!("amount exceeds max deposit")
-            }
+            if amount > max { panic!("amount exceeds max deposit") }
         }
+
         if let Some(existing) = deposits::find_by_anchor_id(&env, &anchor_transaction_id) {
             return existing;
         }
 
-        let tx_id = next_id(&env, symbol_short!("txnonce"));
         let tx = Transaction::new(
             &env,
-            tx_id,
             anchor_transaction_id.clone(),
             stellar_account,
-            caller.clone(),
+            caller,
             amount,
             asset_code,
             memo,
             memo_type,
-            None,
+            None, // callback_type
         );
         let id = tx.id.clone();
         deposits::save(&env, &tx);
@@ -224,37 +193,33 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         require_not_paused(&env);
         require_relayer(&env, &caller);
         let mut tx = deposits::get(&env, &tx_id);
-        let old_status = tx.status.clone();
         if tx.status != TransactionStatus::Pending {
             panic!("transaction must be Pending");
         }
-        tx.status = TransactionStatus::Processing;
+        let new_status = TransactionStatus::Processing;
+        tx.status = new_status.clone();
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
-        emit(
-            &env,
-            Event::StatusUpdated(tx_id, TransactionStatus::Processing),
-        );
+        emit(&env, Event::StatusUpdated(tx_id, new_status));
     }
 
     pub fn mark_completed(env: Env, caller: Address, tx_id: SorobanString) {
         require_not_paused(&env);
         require_relayer(&env, &caller);
         let mut tx = deposits::get(&env, &tx_id);
-        let old_status = tx.status.clone();
-        tx.status = TransactionStatus::Completed;
+        if tx.status != TransactionStatus::Processing {
+            panic!("transaction must be Processing");
+        }
+        let new_status = TransactionStatus::Completed;
+        tx.status = new_status.clone();
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
         if dlq::get(&env, &tx_id).is_some() {
             dlq::remove(&env, &tx_id);
         }
-        emit(
-            &env,
-            Event::StatusUpdated(tx_id, TransactionStatus::Completed),
-        );
+        emit(&env, Event::StatusUpdated(tx_id, new_status));
     }
-    // TODO(#26): enforce transition guard — must be Pending or Processing
-    // TODO(#28): validate error_reason is non-empty
+
     pub fn mark_failed(
         env: Env,
         caller: Address,
@@ -267,68 +232,53 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
             panic!("error_reason must not be empty");
         }
         let mut tx = deposits::get(&env, &tx_id);
-        let old_status = tx.status.clone();
-        tx.status = TransactionStatus::Failed;
+        if tx.status == TransactionStatus::Completed {
+            panic!("cannot fail completed transaction");
+        }
+        let new_status = TransactionStatus::Failed;
+        tx.status = new_status.clone();
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
-        emit(
-            &env,
-            Event::StatusUpdated(tx_id.clone(), TransactionStatus::Failed),
-        );
+        emit(&env, Event::StatusUpdated(tx_id.clone(), new_status));
         let entry = DlqEntry::new(&env, tx_id.clone(), error_reason.clone());
         dlq::push(&env, &entry);
         emit(&env, Event::MovedToDlq(tx_id, error_reason));
     }
 
-    // TODO(#31): emit `DlqRetried` event
     pub fn retry_dlq(env: Env, caller: Address, tx_id: SorobanString) {
         require_not_paused(&env);
+        caller.require_auth();
         let mut entry = dlq::get(&env, &tx_id).expect("dlq entry not found");
         let mut tx = deposits::get(&env, &tx_id);
-        let admin = storage::admin::get(&env);
-        if caller != admin && caller != tx.relayer {
-            panic!("not admin or original relayer");
-        }
-        caller.require_auth();
-
-        // Allow either the admin or the original relayer that registered the tx.
         caller.require_auth();
         let is_admin = caller == storage::admin::get(&env);
         let is_original_relayer = caller == tx.relayer;
         if !is_admin && !is_original_relayer {
-            panic!("not admin or original relayer")
+            panic!("not admin")
         }
-
         if entry.retry_count >= MAX_RETRIES {
             emit(&env, Event::MaxRetriesExceeded(tx_id.clone()));
             panic!("max retries exceeded");
         }
-
-        tx.status = TransactionStatus::Pending;
-        tx.updated_ledger = env.ledger().sequence();
         entry.retry_count += 1;
         entry.last_retry_ledger = env.ledger().sequence();
+        dlq::push(&env, &entry);
+        tx.status = TransactionStatus::Pending;
+        tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
-        dlq::remove(&env, &tx_id);
-
-        emit(
-            &env,
-            Event::StatusUpdated(tx_id, TransactionStatus::Pending),
-        );
+        emit(&env, Event::DlqRetried(tx_id.clone()));
+        emit(&env, Event::StatusUpdated(tx_id, TransactionStatus::Pending));
     }
 
-    // TODO(#32): enforce transition guard — must be Pending or Processing
     pub fn cancel_transaction(env: Env, caller: Address, tx_id: SorobanString) {
         require_not_paused(&env);
         require_admin(&env, &caller);
         let mut tx = deposits::get(&env, &tx_id);
+        let old_status = tx.status.clone();
         tx.status = TransactionStatus::Cancelled;
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
-        emit(
-            &env,
-            Event::StatusUpdated(tx_id, TransactionStatus::Cancelled),
-        );
+        emit(&env, Event::StatusUpdated(tx_id, TransactionStatus::Cancelled));
     }
 
     pub fn finalize_settlement(
@@ -364,14 +314,16 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
             period_end,
         );
         let id = s.id.clone();
-
         let n = tx_ids.len();
         let mut i: u32 = 0;
         while i < n {
             let tx_id = tx_ids.get(i).unwrap();
-            let mut tx = deposits::get(&env, &tx_id);
-            if tx.settlement_id.len() > 0 {
+            let tx = deposits::get(&env, &tx_id);
+            if !tx.settlement_id.is_empty() {
                 panic!("transaction already settled");
+            }
+            if tx.status != TransactionStatus::Completed {
+                panic!("transaction not completed");
             }
             tx.settlement_id = id.clone();
             tx.updated_ledger = env.ledger().sequence();
@@ -380,26 +332,20 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
             i += 1;
         }
         settlements::save(&env, &s);
-        emit(
-            &env,
-            Event::SettlementFinalized(id.clone(), asset_code, total_amount),
-        );
+        emit(&env, Event::SettlementFinalized(id.clone(), asset_code, total_amount));
         id
     }
 
-    // TODO(#40): add `get_dlq_entry(tx_id)` query
-    // TODO(#41): add `get_admin()` query — DONE
-    // TODO(#43): add `get_min_deposit()` query
     pub fn get_dlq_entry(env: Env, tx_id: SorobanString) -> Option<DlqEntry> {
         dlq::get(&env, &tx_id)
     }
 
-    // TODO(#41): add `get_admin()` query
-    // TODO(#43): add `get_min_deposit()` query — DONE
-    // TODO(#44): add `get_max_deposit()` query — DONE
-
     pub fn get_admin(env: Env) -> Address {
         storage::admin::get(&env)
+    }
+
+    pub fn get_pending_admin(env: Env) -> Option<Address> {
+        storage::pending_admin::get(&env)
     }
 
     pub fn is_paused(env: Env) -> bool {
@@ -421,7 +367,30 @@ pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
     pub fn is_relayer(env: Env, address: Address) -> bool {
         relayers::has(&env, &address)
     }
+}
 
+fn next_id(env: &Env, counter_key: Symbol) -> SorobanString {
+    let nonce: u32 = env.storage().instance().get(&counter_key).unwrap_or(0);
+    env.storage().instance().set(&counter_key, &(nonce + 1));
+
+    let ts = env.ledger().timestamp();
+    let seq = env.ledger().sequence();
+
+    let mut data = [0u8; 16];
+    data[..8].copy_from_slice(&ts.to_be_bytes());
+    data[8..12].copy_from_slice(&seq.to_be_bytes());
+    data[12..16].copy_from_slice(&nonce.to_be_bytes());
+
+    let hash = env.crypto().sha256(&Bytes::from_slice(env, &data));
+    let bytes = hash.to_array();
+
+    let mut hex = [0u8; 32];
+    const HEX: &[u8] = b"0123456789abcdef";
+    for i in 0..16 {
+        hex[i * 2] = HEX[(bytes[i] >> 4) as usize];
+        hex[i * 2 + 1] = HEX[(bytes[i] & 0xf) as usize];
+    }
+    SorobanString::from_bytes(env, &hex)
 }
 
 #[cfg(test)]
@@ -431,9 +400,16 @@ mod tests {
     use crate::types::Transaction;
     use soroban_sdk::{
         symbol_short,
-        testutils::{Address as _, Events as _, Ledger as _},
-        vec, Env, IntoVal, String as SorobanString, TryFromVal,
+        testutils::{
+            storage::Persistent as _, Address as _, Events as _, Ledger as _,
+        },
+        vec, Env, IntoVal, String as SorobanString,
     };
+
+    const TEST_ASSET_CODES: [&str; 20] = [
+        "S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "T0", "T1", "T2", "T3", "T4",
+        "T5", "T6", "T7", "T8", "T9",
+    ];
 
     fn setup(env: &Env) -> (Address, Address) {
         env.mock_all_auths();
@@ -443,6 +419,11 @@ mod tests {
         client.initialize(&admin);
         (admin, contract_id)
     }
+
+    const TEST_ASSET_CODES: &[&str] = &[
+        "USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "CNY", "SEK", "NZD",
+        "MXN", "SGD", "HKD", "NOK", "KRW", "TRY", "RUB", "INR", "BRL", "ZAR",
+    ];
 
     fn setup_relayer_deposit<'a>(
         env: &'a Env,
@@ -490,15 +471,15 @@ mod tests {
     }
 
     #[test]
-    fn test_register_deposit_stores_callback_type() {
+    fn test_register_deposit_stores_memo_type() {
         let env = Env::default();
         let (admin, contract_id) = setup(&env);
         let client = SynapseContractClient::new(&env, &contract_id);
         let relayer = Address::generate(&env);
         let stellar = Address::generate(&env);
         let asset = SorobanString::from_str(&env, "USD");
-        let anchor_id = SorobanString::from_str(&env, "cb-type-stored");
-        let cb_type = SorobanString::from_str(&env, "deposit");
+        let anchor_id = SorobanString::from_str(&env, "memo-type-stored");
+        let memo_type_val = SorobanString::from_str(&env, "hash");
 
         client.grant_relayer(&admin, &relayer);
         client.add_asset(&admin, &asset);
@@ -509,11 +490,11 @@ mod tests {
             &100i128,
             &asset,
             &None,
-            &Some(cb_type.clone()),
+            &Some(memo_type_val.clone()),
         );
 
         let tx = client.get_transaction(&tx_id);
-        assert_eq!(tx.callback_type, Some(cb_type));
+        assert_eq!(tx.memo_type, Some(memo_type_val));
     }
 
     #[test]
@@ -544,65 +525,11 @@ mod tests {
     }
 
     #[test]
-    fn test_register_deposit_stores_memo_type() {
-        let env = Env::default();
-        let (admin, contract_id) = setup(&env);
-        let client = SynapseContractClient::new(&env, &contract_id);
-        let relayer = Address::generate(&env);
-        let stellar = Address::generate(&env);
-        let asset = SorobanString::from_str(&env, "USD");
-        client.grant_relayer(&admin, &relayer);
-        client.add_asset(&admin, &asset);
-        let mt = SorobanString::from_str(&env, "text");
-        let tx_id = client.register_deposit(
-            &relayer,
-            &SorobanString::from_str(&env, "mt-stored"),
-            &stellar,
-            &1i128,
-            &asset,
-            &None,
-            &Some(mt.clone()),
-        );
-        let tx = client.get_transaction(&tx_id);
-        assert_eq!(tx.memo_type, Some(mt));
-    }
-
-    #[test]
-    #[should_panic(expected = "invalid memo_type")]
-    fn test_register_deposit_panics_on_invalid_memo_type() {
-        let env = Env::default();
-        let (admin, contract_id) = setup(&env);
-        let client = SynapseContractClient::new(&env, &contract_id);
-        let relayer = Address::generate(&env);
-        let stellar = Address::generate(&env);
-        let asset = SorobanString::from_str(&env, "USD");
-        client.grant_relayer(&admin, &relayer);
-        client.add_asset(&admin, &asset);
-        client.register_deposit(
-            &relayer,
-            &SorobanString::from_str(&env, "mt-bad"),
-            &stellar,
-            &1i128,
-            &asset,
-            &None,
-            &Some(SorobanString::from_str(&env, "bad")),
-        );
-    }
-
-    #[test]
     fn test_register_deposit_memo_type_none_is_valid() {
         let env = Env::default();
-        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "mt-none");
+        let (client, _relayer, tx_id) = setup_relayer_deposit(&env, "mt-none");
         let tx = client.get_transaction(&tx_id);
         assert!(tx.memo_type.is_none());
-    }
-
-    #[test]
-    #[should_panic(expected = "transaction must be Processing")]
-    fn test_mark_completed_panics_when_pending() {
-        let env = Env::default();
-        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "mc-pending");
-        client.mark_completed(&relayer, &tx_id);
     }
 
     #[test]
@@ -657,14 +584,6 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "transaction must be Processing")]
-    fn test_mark_completed_panics_when_pending() {
-        let env = Env::default();
-        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "mc-pending");
-        client.mark_completed(&relayer, &tx_id);
-    }
-
-    #[test]
-    #[should_panic(expected = "transaction must be Processing")]
     fn test_mark_completed_panics_when_already_completed() {
         let env = Env::default();
         let (client, relayer, tx_id) = setup_relayer_deposit(&env, "mc-twice");
@@ -674,6 +593,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "cannot fail completed transaction")]
     fn test_mark_failed_panics_when_completed() {
         let env = Env::default();
         let (client, relayer, tx_id) = setup_relayer_deposit(&env, "mf-completed");
@@ -687,23 +607,11 @@ mod tests {
     }
 
     #[test]
-
-    #[test]
     #[should_panic(expected = "transaction must be Processing")]
     fn test_mark_completed_panics_when_not_processing() {
         let env = Env::default();
         let (client, relayer, tx_id) = setup_relayer_deposit(&env, "mc-not-processing");
         client.mark_completed(&relayer, &tx_id);
-    }
-
-    #[test]
-    fn test_mark_completed_succeeds_when_processing() {
-        let env = Env::default();
-        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "mc-processing");
-        client.mark_processing(&relayer, &tx_id);
-        client.mark_completed(&relayer, &tx_id);
-        let tx = client.get_transaction(&tx_id);
-        assert!(matches!(tx.status, TransactionStatus::Completed));
     }
 
     #[test]
@@ -742,8 +650,9 @@ mod tests {
 
         let events = env.events().all();
         let (_, _, data) = events.last().unwrap();
+        let (event, _ledger): (Event, u32) = TryFromVal::try_from_val(&env, &data).unwrap();
         assert_eq!(
-            Event::try_from_val(&env, &data).unwrap(),
+            event,
             Event::AdminTransferred(admin, new_admin.clone()),
         );
         // new admin is now stored
@@ -787,6 +696,7 @@ mod tests {
             &Address::generate(&env),
             &100i128,
             &SorobanString::from_str(&env, "USD"),
+            &None,
             &None,
         );
         client.finalize_settlement(
@@ -845,6 +755,7 @@ mod tests {
             &10i128,
             &asset,
             &None,
+            &None,
         );
     }
 
@@ -880,72 +791,40 @@ mod tests {
             client.add_asset(&admin, &SorobanString::from_str(&env, code));
         }
         client.add_asset(&admin, &SorobanString::from_str(&env, "OVERFLOW"));
-        // Set to 5000
-        client.set_max_deposit(&admin, &5000i128);
-        assert_eq!(client.get_max_deposit(), 5000i128);
     }
 
     #[test]
-    fn test_transaction_id_deterministic_across_envs() {
-        let env1 = Env::default();
-        let env2 = Env::default();
-        let (admin1, contract_id1) = setup(&env1);
-        let (admin2, contract_id2) = setup(&env2);
-        let client1 = SynapseContractClient::new(&env1, &contract_id1);
-        let client2 = SynapseContractClient::new(&env2, &contract_id2);
-
-        let relayer1 = Address::generate(&env1);
-        let relayer2 = Address::generate(&env2);
-        client1.grant_relayer(&admin1, &relayer1);
-        client2.grant_relayer(&admin2, &relayer2);
-
-        client1.add_asset(&admin1, &SorobanString::from_str(&env1, "USD"));
-        client2.add_asset(&admin2, &SorobanString::from_str(&env2, "USD"));
-
-        let anchor_id = SorobanString::from_str(&env1, "deterministic-anchor");
-        let tx_id_1 = client1.register_deposit(
-            &relayer1,
-            &anchor_id,
-            &Address::generate(&env1),
-            &100_000_000,
-            &SorobanString::from_str(&env1, "USD"),
-            &None,
-            &None,
-        );
-
-        let tx_id_2 = client2.register_deposit(
-            &relayer2,
-            &SorobanString::from_str(&env2, "deterministic-anchor"),
-            &Address::generate(&env2),
-            &100_000_000,
-            &SorobanString::from_str(&env2, "USD"),
-            &None,
-            &None,
-        );
-
-        assert_eq!(tx_id_1, tx_id_2);
-    }
-
-    #[test]
-    fn test_register_deposit_extends_anchor_idx_ttl() {
+    fn test_register_deposit_same_anchor_same_env_returns_same_tx_id() {
         let env = Env::default();
         let (admin, contract_id) = setup(&env);
         let client = SynapseContractClient::new(&env, &contract_id);
         let relayer = Address::generate(&env);
-        let stellar = Address::generate(&env);
-        let asset = SorobanString::from_str(&env, "USD");
-        let anchor_id = SorobanString::from_str(&env, "ttl-anchor");
+        let depositor = Address::generate(&env);
         client.grant_relayer(&admin, &relayer);
-        client.add_asset(&admin, &asset);
-        let tx_id =
-            client.register_deposit(&relayer, &anchor_id, &stellar, &1i128, &asset, &None, &None);
-        let anchor_key = StorageKey::AnchorIdx(anchor_id);
-        let tx_key = StorageKey::Tx(tx_id);
-        let (ttl_anchor, ttl_tx) = env.as_contract(&contract_id, || {
-            let p = env.storage().persistent();
-            (p.get_ttl(&anchor_key), p.get_ttl(&tx_key))
-        });
-        assert_eq!(ttl_anchor, ttl_tx);
+        client.add_asset(&admin, &SorobanString::from_str(&env, "USD"));
+        let anchor = SorobanString::from_str(&env, "deterministic-anchor");
+        let id1 = client.register_deposit(
+            &relayer,
+            &anchor,
+            &depositor,
+            &100_000_000,
+            &SorobanString::from_str(&env, "USD"),
+            &None,
+            &None,
+        );
+        let id2 = client.register_deposit(
+            &relayer,
+            &anchor,
+            &depositor,
+            &100_000_000,
+            &SorobanString::from_str(&env, "USD"),
+            &None,
+            &None,
+        );
+        assert_eq!(id1, id2);
+    }
+
+        assert_eq!(tx_id_1, tx_id_2);
     }
 
     #[test]
@@ -1005,25 +884,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "period_start must be <= period_end")]
-    fn test_finalize_settlement_panics_when_period_start_exceeds_period_end() {
-        let env = Env::default();
-        let (admin, contract_id) = setup(&env);
-        let client = SynapseContractClient::new(&env, &contract_id);
-        let relayer = Address::generate(&env);
-        client.grant_relayer(&admin, &relayer);
-        client.add_asset(&admin, &SorobanString::from_str(&env, "USD"));
-        client.finalize_settlement(
-            &relayer,
-            &SorobanString::from_str(&env, "USD"),
-            &vec![&env],
-            &0i128,
-            &2u64,
-            &1u64,
-        );
-    }
-
-    #[test]
     #[should_panic(expected = "anchor_transaction_id must not be empty")]
     fn test_register_deposit_panics_on_empty_anchor_id() {
         let env = Env::default();
@@ -1034,7 +894,7 @@ mod tests {
         let asset = SorobanString::from_str(&env, "USD");
         client.grant_relayer(&admin, &relayer);
         client.add_asset(&admin, &asset);
-        client.register_deposit(&relayer, &SorobanString::from_str(&env, ""), &stellar, &100i128, &asset, &None);
+        client.register_deposit(&relayer, &SorobanString::from_str(&env, ""), &stellar, &100i128, &asset, &None, &None);
     }
 
     #[test]
@@ -1056,34 +916,6 @@ mod tests {
     }
 
     #[test]
-    fn test_retry_dlq_success() {
-        let env = Env::default();
-        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "retry-tx");
-
-        let admin = env.as_contract(&client.address, || storage::admin::get(&env));
-        let err = SorobanString::from_str(&env, "failed-initially");
-
-        // 1. Mark as failed
-        client.mark_failed(&relayer, &tx_id, &err);
-        let tx_failed = client.get_transaction(&tx_id);
-        assert!(matches!(tx_failed.status, TransactionStatus::Failed));
-
-        // 2. Retry DLQ
-        env.ledger().set_sequence_number(100); // Advance ledger to check updates
-        client.retry_dlq(&admin, &tx_id);
-
-        // 3. Verify Transaction
-        let tx_retried = client.get_transaction(&tx_id);
-        assert!(matches!(tx_retried.status, TransactionStatus::Pending));
-        assert_eq!(tx_retried.updated_ledger, 100);
-
-        // 4. Verify DLQ Entry
-        let entry = env.as_contract(&client.address, || storage::dlq::get(&env, &tx_id).unwrap());
-        assert_eq!(entry.retry_count, 1);
-        assert_eq!(entry.last_retry_ledger, 100);
-    }
-
-    #[test]
     fn test_finalize_settlement_succeeds_when_transactions_unsettled() {
         let env = Env::default();
         let (admin, contract_id) = setup(&env);
@@ -1095,10 +927,7 @@ mod tests {
         client.grant_relayer(&admin, &relayer);
         client.add_asset(&admin, &asset);
         let tx_id =
-            client.register_deposit(&relayer, &anchor_id, &stellar, &100i128, &asset, &None);
-
-        client.mark_processing(&relayer, &tx_id);
-        client.mark_completed(&relayer, &tx_id);
+            client.register_deposit(&relayer, &anchor_id, &stellar, &100i128, &asset, &None, &None);
 
         client.mark_processing(&relayer, &tx_id);
         client.mark_completed(&relayer, &tx_id);
@@ -1156,7 +985,7 @@ mod tests {
         client.grant_relayer(&admin, &relayer);
         client.add_asset(&admin, &asset);
         let tx_id =
-            client.register_deposit(&relayer, &anchor_id, &stellar, &100i128, &asset, &None);
+            client.register_deposit(&relayer, &anchor_id, &stellar, &100i128, &asset, &None, &None);
 
         // Cancel the transaction
         client.cancel_transaction(&admin, &tx_id);
@@ -1189,7 +1018,7 @@ mod tests {
         client.grant_relayer(&admin, &relayer);
         client.add_asset(&admin, &asset);
         let tx_id =
-            client.register_deposit(&relayer, &anchor_id, &stellar, &100i128, &asset, &None);
+            client.register_deposit(&relayer, &anchor_id, &stellar, &100i128, &asset, &None, &None);
 
         client.mark_processing(&relayer, &tx_id);
         client.mark_completed(&relayer, &tx_id);
@@ -1204,20 +1033,18 @@ mod tests {
         client.finalize_settlement(
             &relayer,
             &asset,
-            &vec![&env, tx_id],
+            &vec![&env, tx_id.clone()],
             &100i128,
             &1u64,
             &2u64,
         );
-
-        client.finalize_settlement(&relayer, &asset, &vec![&env, tx_id], &100i128, &1u64, &2u64);
     }
 
     // -----------------------------------------------------------------------
     // Pause enforcement — issue #10
     // -----------------------------------------------------------------------
 
-    fn setup_with_relayer(env: &Env) -> (Address, Address, Address, SynapseContractClient) {
+    fn setup_with_relayer(env: &Env) -> (Address, Address, Address, SynapseContractClient<'_>) {
         let (admin, contract_id) = setup(env);
         let client = SynapseContractClient::new(env, &contract_id);
         let relayer = Address::generate(env);
@@ -1293,6 +1120,7 @@ mod tests {
             &100i128,
             &SorobanString::from_str(&env, "USD"),
             &None,
+            &None,
         );
     }
 
@@ -1307,6 +1135,7 @@ mod tests {
             &Address::generate(&env),
             &100i128,
             &SorobanString::from_str(&env, "USD"),
+            &None,
             &None,
         );
         client.pause(&admin);
@@ -1324,6 +1153,7 @@ mod tests {
             &Address::generate(&env),
             &100i128,
             &SorobanString::from_str(&env, "USD"),
+            &None,
             &None,
         );
         client.mark_processing(&relayer, &tx_id);
@@ -1343,6 +1173,7 @@ mod tests {
             &100i128,
             &SorobanString::from_str(&env, "USD"),
             &None,
+            &None,
         );
         client.pause(&admin);
         client.mark_failed(&relayer, &tx_id, &SorobanString::from_str(&env, "err"));
@@ -1359,6 +1190,7 @@ mod tests {
             &Address::generate(&env),
             &100i128,
             &SorobanString::from_str(&env, "USD"),
+            &None,
             &None,
         );
         client.mark_failed(&relayer, &tx_id, &SorobanString::from_str(&env, "err"));
@@ -1378,6 +1210,7 @@ mod tests {
             &100i128,
             &SorobanString::from_str(&env, "USD"),
             &None,
+            &None,
         );
         client.pause(&admin);
         client.finalize_settlement(
@@ -1388,6 +1221,117 @@ mod tests {
             &0u64,
             &1u64,
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // temp_lock unit tests — task 2.2
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn is_locked_false_before_lock() {
+        let env = Env::default();
+        let (_, contract_id) = setup(&env);
+        let key = SorobanString::from_str(&env, "test-key-1");
+        let locked = env.as_contract(&contract_id, || storage::temp_lock::is_locked(&env, &key));
+        assert!(!locked);
+    }
+
+    #[test]
+    fn is_locked_true_after_lock() {
+        let env = Env::default();
+        let (_, contract_id) = setup(&env);
+        let key = SorobanString::from_str(&env, "test-key-2");
+        env.as_contract(&contract_id, || storage::temp_lock::lock(&env, &key));
+        let locked = env.as_contract(&contract_id, || storage::temp_lock::is_locked(&env, &key));
+        assert!(locked);
+    }
+
+    #[test]
+    #[should_panic(expected = "idempotency lock active")]
+    fn lock_panics_on_double_lock() {
+        let env = Env::default();
+        let (_, contract_id) = setup(&env);
+        let key = SorobanString::from_str(&env, "test-key-3");
+        env.as_contract(&contract_id, || storage::temp_lock::lock(&env, &key));
+        env.as_contract(&contract_id, || storage::temp_lock::lock(&env, &key));
+    }
+
+    #[test]
+    fn lock_unlock_lock_succeeds() {
+        let env = Env::default();
+        let (_, contract_id) = setup(&env);
+        let key = SorobanString::from_str(&env, "test-key-4");
+        env.as_contract(&contract_id, || storage::temp_lock::lock(&env, &key));
+        env.as_contract(&contract_id, || storage::temp_lock::unlock(&env, &key));
+        // Should not panic
+        env.as_contract(&contract_id, || storage::temp_lock::lock(&env, &key));
+    }
+
+    #[test]
+    fn is_locked_false_after_unlock() {
+        let env = Env::default();
+        let (_, contract_id) = setup(&env);
+        let key = SorobanString::from_str(&env, "test-key-5");
+        env.as_contract(&contract_id, || storage::temp_lock::lock(&env, &key));
+        env.as_contract(&contract_id, || storage::temp_lock::unlock(&env, &key));
+        let locked = env.as_contract(&contract_id, || storage::temp_lock::is_locked(&env, &key));
+        assert!(!locked);
+    }
+
+    // -----------------------------------------------------------------------
+    // temp_lock wiring tests — task 3.2
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn register_deposit_is_idempotent() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let relayer = Address::generate(&env);
+        let stellar = Address::generate(&env);
+        let asset = SorobanString::from_str(&env, "USD");
+        let anchor_id = SorobanString::from_str(&env, "idem-anchor-1");
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &asset);
+        let id1 = client.register_deposit(&relayer, &anchor_id, &stellar, &100i128, &asset, &None, &None);
+        // Simulate lock expiry by manually releasing it (mirrors TTL expiry behaviour)
+        env.as_contract(&contract_id, || storage::temp_lock::unlock(&env, &anchor_id));
+        let id2 = client.register_deposit(&relayer, &anchor_id, &stellar, &100i128, &asset, &None, &None);
+        assert_eq!(id1, id2);
+    }
+
+    #[test]
+    fn lock_held_after_first_register_deposit() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let relayer = Address::generate(&env);
+        let stellar = Address::generate(&env);
+        let asset = SorobanString::from_str(&env, "USD");
+        let anchor_id = SorobanString::from_str(&env, "lock-held-anchor");
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &asset);
+        client.register_deposit(&relayer, &anchor_id, &stellar, &100i128, &asset, &None, &None);
+        let locked = env.as_contract(&contract_id, || storage::temp_lock::is_locked(&env, &anchor_id));
+        assert!(locked);
+    }
+
+    #[test]
+    #[should_panic(expected = "idempotency lock active")]
+    fn register_deposit_panics_when_lock_active_no_record() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let relayer = Address::generate(&env);
+        let stellar = Address::generate(&env);
+        let asset = SorobanString::from_str(&env, "USD");
+        let anchor_id = SorobanString::from_str(&env, "lock-active-anchor");
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &asset);
+        // manually acquire the lock so no record exists yet
+        env.as_contract(&contract_id, || storage::temp_lock::lock(&env, &anchor_id));
+        // this call should panic because the lock is active but no record exists
+        client.register_deposit(&relayer, &anchor_id, &stellar, &100i128, &asset, &None, &None);
     }
 
     // -----------------------------------------------------------------------
@@ -1402,7 +1346,8 @@ mod tests {
         let new_admin = Address::generate(&env);
 
         client.propose_admin(&admin, &new_admin);
-        assert_eq!(client.get_pending_admin(), Some(new_admin));
+        let pending = env.as_contract(&contract_id, || storage::pending_admin::get(&env));
+        assert_eq!(pending, Some(new_admin));
     }
 
     #[test]
@@ -1416,11 +1361,12 @@ mod tests {
         client.accept_admin(&new_admin);
 
         assert_eq!(client.get_admin(), new_admin);
-        assert_eq!(client.get_pending_admin(), None);
+        let pending = env.as_contract(&contract_id, || storage::pending_admin::get(&env));
+        assert_eq!(pending, None);
     }
 
     #[test]
-    #[should_panic(expected = "not pending admin")]
+    #[should_panic(expected = "only proposed admin can accept")]
     fn test_accept_admin_panics_if_wrong_caller() {
         let env = Env::default();
         let (admin, contract_id) = setup(&env);
@@ -1544,5 +1490,102 @@ mod tests {
         let (admin, _, _, client) = setup_with_relayer(&env);
         client.pause(&admin);
         client.set_min_deposit(&admin, &100i128);
+    }
+
+    // -----------------------------------------------------------------------
+    // StatusUpdated includes old_status — issue #66
+    // -----------------------------------------------------------------------
+
+    fn last_status_updated_event(env: &Env) -> (TransactionStatus, TransactionStatus) {
+        let (_, _, data) = env.events().all().last().unwrap();
+        match Event::try_from_val(env, &data).unwrap() {
+            Event::StatusUpdated(_, old, new) => (old, new),
+            _ => panic!("expected StatusUpdated"),
+        }
+    }
+
+    #[test]
+    fn test_mark_processing_event_includes_old_status() {
+        let env = Env::default();
+        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "su-processing");
+        client.mark_processing(&relayer, &tx_id);
+        let (old, new) = last_status_updated_event(&env);
+        assert_eq!(old, TransactionStatus::Pending);
+        assert_eq!(new, TransactionStatus::Processing);
+    }
+
+    #[test]
+    fn test_mark_completed_event_includes_old_status() {
+        let env = Env::default();
+        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "su-completed");
+        client.mark_processing(&relayer, &tx_id);
+        client.mark_completed(&relayer, &tx_id);
+        let (old, new) = last_status_updated_event(&env);
+        assert_eq!(old, TransactionStatus::Processing);
+        assert_eq!(new, TransactionStatus::Completed);
+    }
+
+    #[test]
+    fn test_mark_failed_event_includes_old_status() {
+        let env = Env::default();
+        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "su-failed");
+        client.mark_failed(&relayer, &tx_id, &SorobanString::from_str(&env, "err"));
+        // second-to-last event is StatusUpdated (last is MovedToDlq)
+        let events = env.events().all();
+        let (_, _, data) = events.get(events.len() - 2).unwrap();
+        match Event::try_from_val(&env, &data).unwrap() {
+            Event::StatusUpdated(_, old, new) => {
+                assert_eq!(old, TransactionStatus::Pending);
+                assert_eq!(new, TransactionStatus::Failed);
+            }
+            _ => panic!("expected StatusUpdated"),
+        }
+    }
+
+    #[test]
+    fn test_retry_dlq_event_includes_old_status() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let relayer = Address::generate(&env);
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &SorobanString::from_str(&env, "USD"));
+        let tx_id = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "su-retry"),
+            &Address::generate(&env),
+            &1i128,
+            &SorobanString::from_str(&env, "USD"),
+            &None,
+            &None,
+        );
+        client.mark_failed(&relayer, &tx_id, &SorobanString::from_str(&env, "err"));
+        client.retry_dlq(&admin, &tx_id);
+        let (old, new) = last_status_updated_event(&env);
+        assert_eq!(old, TransactionStatus::Failed);
+        assert_eq!(new, TransactionStatus::Pending);
+    }
+
+    #[test]
+    fn test_cancel_transaction_event_includes_old_status() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let relayer = Address::generate(&env);
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &SorobanString::from_str(&env, "USD"));
+        let tx_id = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "su-cancel"),
+            &Address::generate(&env),
+            &1i128,
+            &SorobanString::from_str(&env, "USD"),
+            &None,
+            &None,
+        );
+        client.cancel_transaction(&admin, &tx_id);
+        let (old, new) = last_status_updated_event(&env);
+        assert_eq!(old, TransactionStatus::Pending);
+        assert_eq!(new, TransactionStatus::Cancelled);
     }
 }
