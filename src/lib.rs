@@ -124,6 +124,10 @@ impl SynapseContract {
         assets::is_allowed(&env, &asset_code)
     }
 
+    pub fn asset_count(env: Env) -> u32 {
+        assets::count(&env)
+    }
+
     pub fn set_min_deposit(env: Env, caller: Address, amount: i128) {
         require_not_paused(&env);
         require_admin(&env, &caller);

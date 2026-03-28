@@ -48,9 +48,7 @@ pub mod admin {
 pub mod pending_admin {
     use super::*;
     pub fn set(env: &Env, pending: &Address) {
-        env.storage()
-            .instance()
-            .set(&StorageKey::PendingAdmin, pending);
+        env.storage().instance().set(&StorageKey::PendingAdmin, pending);
     }
     pub fn get(env: &Env) -> Option<Address> {
         env.storage().instance().get(&StorageKey::PendingAdmin)
