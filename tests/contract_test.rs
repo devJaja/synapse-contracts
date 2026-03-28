@@ -305,6 +305,21 @@ fn add_and_remove_asset() {
 }
 
 #[test]
+fn is_asset_allowed_query_reflects_allowlist_state() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let asset_code = usd(&env);
+
+    assert!(!client.is_asset_allowed(&asset_code));
+
+    client.add_asset(&admin, &asset_code);
+    assert!(client.is_asset_allowed(&asset_code));
+
+    client.remove_asset(&admin, &asset_code);
+    assert!(!client.is_asset_allowed(&asset_code));
+}
+
+#[test]
 #[should_panic(expected = "asset not in allowlist")]
 fn remove_asset_rejects_unlisted_asset() {
     let env = Env::default();
