@@ -49,6 +49,7 @@ pub enum StorageKey {
     MinDeposit,
     MaxDeposit,
     AssetCount,
+    RelayerCount,
     Relayer(Address),
     Asset(SorobanString),
     Tx(SorobanString),
@@ -107,16 +108,38 @@ pub mod pause {
 
 pub mod relayers {
     use super::*;
+
+    pub fn count(env: &Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&StorageKey::RelayerCount)
+            .unwrap_or(0u32)
+    }
+
+    fn set_count(env: &Env, n: u32) {
+        env.storage().instance().set(&StorageKey::RelayerCount, &n);
+    }
+
     pub fn add(env: &Env, r: &Address) {
+        if has(env, r) {
+            return;
+        }
         env.storage()
             .instance()
             .set(&StorageKey::Relayer(r.clone()), &true);
+        set_count(env, count(env) + 1);
     }
+
     pub fn remove(env: &Env, r: &Address) {
+        if !has(env, r) {
+            return;
+        }
         env.storage()
             .instance()
             .remove(&StorageKey::Relayer(r.clone()));
+        set_count(env, count(env).saturating_sub(1));
     }
+
     pub fn has(env: &Env, r: &Address) -> bool {
         env.storage()
             .instance()
