@@ -753,6 +753,41 @@ fn get_dlq_entry_returns_some_when_found() {
     assert_eq!(entry.retry_count, 0);
 }
 
+#[test]
+fn dlq_entry_ttl_is_extended_on_update() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "dlq-ttl-update"),
+        &Address::generate(&env),
+        &50_000_000,
+        &usd(&env),
+        &None,
+        &None,
+    );
+    client.mark_failed(
+        &relayer,
+        &tx_id,
+        &SorobanString::from_str(&env, "network timeout"),
+    );
+
+    let initial_ttl = client.get_dlq_ttl(&tx_id);
+    assert!(initial_ttl > 0);
+
+    client.touch_dlq_entry(&relayer, &tx_id);
+
+    let refreshed_ttl = client.get_dlq_ttl(&tx_id);
+    assert!(
+        refreshed_ttl > initial_ttl || refreshed_ttl == 172_800,
+        "DLQ TTL should be extended on update"
+    );
+}
+
 // issue #23: Pending→Processing guard
 #[test]
 #[should_panic(expected = "transaction must be Pending")]
