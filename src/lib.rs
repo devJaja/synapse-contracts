@@ -206,7 +206,9 @@ impl SynapseContract {
         if anchor_transaction_id.len() == 0 {
             panic!("anchor_transaction_id must not be empty")
         }
-        assets::require_allowed(&env, &asset_code);
+        if !assets::is_allowed(&env, &asset_code) {
+            panic!("asset not allowed")
+        }
 
         if let Some(min) = min_deposit::get(&env) {
             if amount < min {
