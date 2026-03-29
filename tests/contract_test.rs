@@ -2498,3 +2498,65 @@ fn set_min_deposit_emits_min_deposit_updated_event() {
     let events = env.events().all();
     assert!(!events.is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// Non-admin access control — issue #411
+// ---------------------------------------------------------------------------
+
+#[test]
+#[should_panic(expected = "not admin")]
+fn non_admin_cannot_add_asset() {
+    let env = Env::default();
+    let (_, _, client) = setup(&env);
+    let rando = Address::generate(&env);
+    client.add_asset(&rando, &usd(&env));
+}
+
+#[test]
+#[should_panic(expected = "not admin")]
+fn non_admin_cannot_remove_asset() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    client.add_asset(&admin, &usd(&env));
+    let rando = Address::generate(&env);
+    client.remove_asset(&rando, &usd(&env));
+}
+
+#[test]
+#[should_panic(expected = "not admin")]
+fn non_admin_cannot_grant_relayer_411() {
+    let env = Env::default();
+    let (_, _, client) = setup(&env);
+    let rando = Address::generate(&env);
+    client.grant_relayer(&rando, &Address::generate(&env));
+}
+
+#[test]
+#[should_panic(expected = "not admin")]
+fn non_admin_cannot_revoke_relayer() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    let rando = Address::generate(&env);
+    client.revoke_relayer(&rando, &relayer);
+}
+
+#[test]
+#[should_panic(expected = "not admin")]
+fn non_admin_cannot_pause() {
+    let env = Env::default();
+    let (_, _, client) = setup(&env);
+    let rando = Address::generate(&env);
+    client.pause(&rando);
+}
+
+#[test]
+#[should_panic(expected = "not admin")]
+fn non_admin_cannot_unpause() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    client.pause(&admin);
+    let rando = Address::generate(&env);
+    client.unpause(&rando);
+}
