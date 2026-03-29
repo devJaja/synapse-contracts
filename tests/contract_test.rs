@@ -496,6 +496,11 @@ fn set_and_get_max_deposit() {
     let (admin, _, client) = setup(&env);
     client.set_max_deposit(&admin, &500_000_000);
     assert_eq!(client.get_max_deposit(), 500_000_000);
+
+    let events = env.events().all();
+    let (_, _, data) = events.last().unwrap();
+    let (event, _ledger): (Event, u32) = <(Event, u32)>::from_val(&env, &data);
+    assert_eq!(event, Event::MaxDepositUpdated(500_000_000));
 }
 
 #[test]

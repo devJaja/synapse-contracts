@@ -179,6 +179,7 @@ impl SynapseContract {
             panic!("max deposit must be positive")
         }
         max_deposit::set(&env, &amount);
+        emit(&env, Event::MaxDepositUpdated(amount));
     }
 
     pub fn get_max_deposit(env: Env) -> i128 {

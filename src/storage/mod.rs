@@ -158,29 +158,6 @@ pub mod assets {
             .get(&StorageKey::AssetCount)
             .unwrap_or(0u32)
     }
-
-    fn set_count(env: &Env, n: u32) {
-        env.storage().instance().set(&StorageKey::AssetCount, &n);
-    }
-
-    pub fn count(env: &Env) -> u32 {
-        env.storage()
-            .instance()
-            .get(&StorageKey::AssetCount)
-            .unwrap_or(0u32)
-    }
-
-    fn set_count(env: &Env, n: u32) {
-        env.storage().instance().set(&StorageKey::AssetCount, &n);
-    }
-
-    pub fn count(env: &Env) -> u32 {
-        env.storage()
-            .instance()
-            .get(&StorageKey::AssetCount)
-            .unwrap_or(0u32)
-    }
-
     fn set_count(env: &Env, n: u32) {
         env.storage().instance().set(&StorageKey::AssetCount, &n);
     }
