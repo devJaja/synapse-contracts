@@ -2604,3 +2604,52 @@ fn get_transaction_by_anchor_id_returns_correct_tx() {
     assert_eq!(tx.anchor_transaction_id, anchor_id);
     assert_eq!(tx.amount, 75_000_000);
 }
+
+// ---------------------------------------------------------------------------
+// Issue #422 — AssetAdded and AssetRemoved events emitted
+// ---------------------------------------------------------------------------
+
+#[test]
+fn add_asset_emits_asset_added_event() {
+    let env = Env::default();
+    let (admin, contract_id, client) = setup(&env);
+    let asset = SorobanString::from_str(&env, "EUR");
+
+    client.add_asset(&admin, &asset);
+
+    let all_events = env.events().all();
+    let topics: soroban_sdk::Vec<Val> = (symbol_short!("synapse"),).into_val(&env);
+    let ledger = env.ledger().sequence();
+    let event_count = all_events.len();
+    let (evt_contract, evt_topics, evt_data) = all_events.get(event_count - 1).unwrap();
+
+    assert_eq!(evt_contract, contract_id);
+    assert_eq!(evt_topics, topics);
+    assert_eq!(
+        event_data(&env, evt_data),
+        (Event::AssetAdded(asset), ledger),
+    );
+}
+
+#[test]
+fn remove_asset_emits_asset_removed_event() {
+    let env = Env::default();
+    let (admin, contract_id, client) = setup(&env);
+    let asset = SorobanString::from_str(&env, "EUR");
+
+    client.add_asset(&admin, &asset);
+    client.remove_asset(&admin, &asset);
+
+    let all_events = env.events().all();
+    let topics: soroban_sdk::Vec<Val> = (symbol_short!("synapse"),).into_val(&env);
+    let ledger = env.ledger().sequence();
+    let event_count = all_events.len();
+    let (evt_contract, evt_topics, evt_data) = all_events.get(event_count - 1).unwrap();
+
+    assert_eq!(evt_contract, contract_id);
+    assert_eq!(evt_topics, topics);
+    assert_eq!(
+        event_data(&env, evt_data),
+        (Event::AssetRemoved(asset), ledger),
+    );
+}
