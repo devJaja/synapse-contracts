@@ -1350,4 +1350,84 @@ mod tests {
         assert_eq!(contract, contract_id);
         assert_eq!(topics, (symbol_short!("synapse"),).into_val(&env));
     }
+
+    fn last_status_updated_event(env: &Env) -> Option<(SorobanString, TransactionStatus, TransactionStatus)> {
+        for (_, _, data) in env.events().all().iter().rev() {
+            if let Ok((event, _)) = <(Event, u32)>::try_from_val(env, &data) {
+                if let Event::StatusUpdated(tx_id, old, new) = event {
+                    return Some((tx_id, old, new));
+                }
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn test_mark_processing_emits_status_updated_pending_to_processing() {
+        let env = Env::default();
+        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "su-processing");
+        client.mark_processing(&relayer, &tx_id);
+        let (id, old, new) = last_status_updated_event(&env).expect("no StatusUpdated event");
+        assert_eq!(id, tx_id);
+        assert_eq!(old, TransactionStatus::Pending);
+        assert_eq!(new, TransactionStatus::Processing);
+    }
+
+    #[test]
+    fn test_mark_completed_emits_status_updated_processing_to_completed() {
+        let env = Env::default();
+        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "su-completed");
+        client.mark_processing(&relayer, &tx_id);
+        client.mark_completed(&relayer, &tx_id);
+        let (id, old, new) = last_status_updated_event(&env).expect("no StatusUpdated event");
+        assert_eq!(id, tx_id);
+        assert_eq!(old, TransactionStatus::Processing);
+        assert_eq!(new, TransactionStatus::Completed);
+    }
+
+    #[test]
+    fn test_mark_failed_emits_status_updated_with_old_status() {
+        let env = Env::default();
+        let (client, relayer, tx_id) = setup_relayer_deposit(&env, "su-failed");
+        client.mark_failed(&relayer, &tx_id, &SorobanString::from_str(&env, "err"));
+        let (id, old, new) = last_status_updated_event(&env).expect("no StatusUpdated event");
+        // StatusUpdated is emitted before MovedToDlq, so we need to find it specifically
+        let found = env.events().all().iter().any(|(_, _, data)| {
+            if let Ok((event, _)) = <(Event, u32)>::try_from_val(&env, &data) {
+                event == Event::StatusUpdated(tx_id.clone(), TransactionStatus::Pending, TransactionStatus::Failed)
+            } else {
+                false
+            }
+        });
+        assert!(found, "StatusUpdated(Pending, Failed) not emitted");
+    }
+
+    #[test]
+    fn test_cancel_transaction_emits_status_updated_to_cancelled() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let relayer = Address::generate(&env);
+        let asset = SorobanString::from_str(&env, "USD");
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &asset);
+        let tx_id = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "su-cancel"),
+            &Address::generate(&env),
+            &1i128,
+            &asset,
+            &None,
+            &None,
+        );
+        client.cancel_transaction(&admin, &tx_id);
+        let found = env.events().all().iter().any(|(_, _, data)| {
+            if let Ok((event, _)) = <(Event, u32)>::try_from_val(&env, &data) {
+                event == Event::StatusUpdated(tx_id.clone(), TransactionStatus::Pending, TransactionStatus::Cancelled)
+            } else {
+                false
+            }
+        });
+        assert!(found, "StatusUpdated(Pending, Cancelled) not emitted");
+    }
 }

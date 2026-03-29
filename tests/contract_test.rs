@@ -2498,3 +2498,132 @@ fn set_min_deposit_emits_min_deposit_updated_event() {
     let events = env.events().all();
     assert!(!events.is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// feat/emit-status-updated
+// ---------------------------------------------------------------------------
+
+#[test]
+fn mark_processing_emits_status_updated_pending_to_processing() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "su-proc-ext"),
+        &Address::generate(&env),
+        &100_000_000,
+        &usd(&env),
+        &None,
+        &None,
+    );
+    client.mark_processing(&relayer, &tx_id);
+    let found = env.events().all().iter().any(|(_, _, data)| {
+        if let Ok((event, _)) = <(Event, u32)>::try_from_val(&env, &data) {
+            event == Event::StatusUpdated(
+                tx_id.clone(),
+                synapse_contract::types::TransactionStatus::Pending,
+                synapse_contract::types::TransactionStatus::Processing,
+            )
+        } else {
+            false
+        }
+    });
+    assert!(found, "StatusUpdated(Pending, Processing) not emitted");
+}
+
+#[test]
+fn mark_completed_emits_status_updated_processing_to_completed() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "su-comp-ext"),
+        &Address::generate(&env),
+        &100_000_000,
+        &usd(&env),
+        &None,
+        &None,
+    );
+    client.mark_processing(&relayer, &tx_id);
+    client.mark_completed(&relayer, &tx_id);
+    let found = env.events().all().iter().any(|(_, _, data)| {
+        if let Ok((event, _)) = <(Event, u32)>::try_from_val(&env, &data) {
+            event == Event::StatusUpdated(
+                tx_id.clone(),
+                synapse_contract::types::TransactionStatus::Processing,
+                synapse_contract::types::TransactionStatus::Completed,
+            )
+        } else {
+            false
+        }
+    });
+    assert!(found, "StatusUpdated(Processing, Completed) not emitted");
+}
+
+#[test]
+fn mark_failed_emits_status_updated_pending_to_failed() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "su-fail-ext"),
+        &Address::generate(&env),
+        &100_000_000,
+        &usd(&env),
+        &None,
+        &None,
+    );
+    client.mark_failed(&relayer, &tx_id, &SorobanString::from_str(&env, "err"));
+    let found = env.events().all().iter().any(|(_, _, data)| {
+        if let Ok((event, _)) = <(Event, u32)>::try_from_val(&env, &data) {
+            event == Event::StatusUpdated(
+                tx_id.clone(),
+                synapse_contract::types::TransactionStatus::Pending,
+                synapse_contract::types::TransactionStatus::Failed,
+            )
+        } else {
+            false
+        }
+    });
+    assert!(found, "StatusUpdated(Pending, Failed) not emitted");
+}
+
+#[test]
+fn cancel_transaction_emits_status_updated_to_cancelled() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "su-cancel-ext"),
+        &Address::generate(&env),
+        &100_000_000,
+        &usd(&env),
+        &None,
+        &None,
+    );
+    client.cancel_transaction(&admin, &tx_id);
+    let found = env.events().all().iter().any(|(_, _, data)| {
+        if let Ok((event, _)) = <(Event, u32)>::try_from_val(&env, &data) {
+            event == Event::StatusUpdated(
+                tx_id.clone(),
+                synapse_contract::types::TransactionStatus::Pending,
+                synapse_contract::types::TransactionStatus::Cancelled,
+            )
+        } else {
+            false
+        }
+    });
+    assert!(found, "StatusUpdated(Pending, Cancelled) not emitted");
+}
