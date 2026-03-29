@@ -352,6 +352,26 @@ fn register_deposit_rejects_unlisted_asset() {
     );
 }
 
+// Issue #399: empty anchor_transaction_id must be rejected
+#[test]
+#[should_panic(expected = "anchor_transaction_id must not be empty")]
+fn register_deposit_panics_on_empty_anchor_id() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+    client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, ""),
+        &Address::generate(&env),
+        &100_000_000,
+        &usd(&env),
+        &None,
+        &None,
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Deposit registration
 // ---------------------------------------------------------------------------
