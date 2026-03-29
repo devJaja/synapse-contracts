@@ -243,7 +243,7 @@ impl SynapseContract {
         deposits::index_anchor_id(&env, &anchor_transaction_id, &id);
         emit(
             &env,
-            Event::DepositRegistered(id.clone(), anchor_transaction_id),
+            Event::DepositRegistered(id.clone(), caller),
         );
         id
     }
@@ -1349,5 +1349,34 @@ mod tests {
         let (contract, topics, _) = events.last().unwrap();
         assert_eq!(contract, contract_id);
         assert_eq!(topics, (symbol_short!("synapse"),).into_val(&env));
+    }
+
+    #[test]
+    fn test_register_deposit_emits_deposit_registered_with_relayer() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let relayer = Address::generate(&env);
+        let asset = SorobanString::from_str(&env, "USD");
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &asset);
+        let tx_id = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "dr-anchor-1"),
+            &Address::generate(&env),
+            &100_000_000i128,
+            &asset,
+            &None,
+            &None,
+        );
+        let events = env.events().all();
+        let found = events.iter().any(|(_, _, data)| {
+            if let Ok((event, _)) = <(Event, u32)>::try_from_val(&env, &data) {
+                event == Event::DepositRegistered(tx_id.clone(), relayer.clone())
+            } else {
+                false
+            }
+        });
+        assert!(found, "DepositRegistered event not emitted with correct relayer");
     }
 }

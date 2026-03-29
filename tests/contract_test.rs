@@ -2498,3 +2498,34 @@ fn set_min_deposit_emits_min_deposit_updated_event() {
     let events = env.events().all();
     assert!(!events.is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// feat/emit-deposit-registered
+// ---------------------------------------------------------------------------
+
+#[test]
+fn register_deposit_emits_deposit_registered_with_relayer() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "dr-ext-1"),
+        &Address::generate(&env),
+        &100_000_000,
+        &usd(&env),
+        &None,
+        &None,
+    );
+    let all_events = env.events().all();
+    let found = all_events.iter().any(|(_, _, data)| {
+        if let Ok((event, _)) = <(Event, u32)>::try_from_val(&env, &data) {
+            event == Event::DepositRegistered(tx_id.clone(), relayer.clone())
+        } else {
+            false
+        }
+    });
+    assert!(found, "DepositRegistered(tx_id, relayer) event not emitted");
+}

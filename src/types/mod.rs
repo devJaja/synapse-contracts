@@ -131,7 +131,7 @@ pub enum Event {
     AdminTransferred(Address, Address),
     AdminTransferProposed(Address, Address),
     RelayerGranted(Address),
-    DepositRegistered(SorobanString, SorobanString),
+    DepositRegistered(SorobanString, Address),
     StatusUpdated(SorobanString, TransactionStatus, TransactionStatus),
     SettlementFinalized(SorobanString, SorobanString, i128),
     Settled(SorobanString, SorobanString),
