@@ -693,12 +693,14 @@ fn get_transaction_returns_correct_tx() {
     let env = Env::default();
     let (admin, _, client) = setup(&env);
     let relayer = Address::generate(&env);
+    let depositor = Address::generate(&env);
+    let anchor_id = SorobanString::from_str(&env, "issue-82-get");
     client.grant_relayer(&admin, &relayer);
     client.add_asset(&admin, &usd(&env));
     let tx_id = client.register_deposit(
         &relayer,
-        &SorobanString::from_str(&env, "issue-82-get"),
-        &Address::generate(&env),
+        &anchor_id,
+        &depositor,
         &75_000_000,
         &usd(&env),
         &None,
@@ -706,7 +708,16 @@ fn get_transaction_returns_correct_tx() {
     );
     let tx = client.get_transaction(&tx_id);
     assert_eq!(tx.id, tx_id);
+    assert_eq!(tx.anchor_transaction_id, anchor_id);
+    assert_eq!(tx.stellar_account, depositor);
+    assert_eq!(tx.relayer, relayer);
     assert_eq!(tx.amount, 75_000_000);
+    assert_eq!(tx.asset_code, usd(&env));
+    assert_eq!(tx.memo, None);
+    assert_eq!(tx.memo_type, None);
+    assert_eq!(tx.status, synapse_contract::types::TransactionStatus::Pending);
+    assert_eq!(tx.settlement_id, SorobanString::from_str(&env, ""));
+    assert_eq!(tx.retry_count, 0);
 }
 
 #[test]
