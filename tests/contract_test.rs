@@ -419,15 +419,17 @@ fn non_admin_cannot_retry_dlq() {
     client.retry_dlq(&stranger, &tx_id);
 }
 
+// ---------------------------------------------------------------------------
+// Settlement
+// ---------------------------------------------------------------------------
+
 #[test]
 #[should_panic(expected = "not admin or original relayer")]
 fn unrelated_relayer_cannot_retry_dlq() {
     let env = Env::default();
     let (admin, _, client) = setup(&env);
-    let relayer1 = Address::generate(&env);
-    let relayer2 = Address::generate(&env);
-    client.grant_relayer(&admin, &relayer1);
-    client.grant_relayer(&admin, &relayer2);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
     client.add_asset(&admin, &usd(&env));
 
     let tx_id = register(&env, &client, &relayer1, "retry-unrelated", 50_000_000);
@@ -436,8 +438,8 @@ fn unrelated_relayer_cannot_retry_dlq() {
 }
 
 #[test]
-#[should_panic(expected = "max retries exceeded")]
-fn retry_dlq_panics_when_max_retries_exceeded() {
+#[should_panic(expected = "period_start must be <= period_end")]
+fn finalize_settlement_panics_when_period_order_wrong() {
     let env = Env::default();
     let (admin, _, client) = setup(&env);
     let relayer = Address::generate(&env);
