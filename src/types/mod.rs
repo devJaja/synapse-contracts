@@ -1,5 +1,4 @@
 use soroban_sdk::{contracttype, Address, Env, String as SorobanString, Vec};
-use alloc::string::ToString;
 
 pub const MAX_RETRIES: u32 = 5;
 
@@ -14,7 +13,7 @@ pub enum TransactionStatus {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Transaction {
     pub id: SorobanString,
     pub anchor_transaction_id: SorobanString,
@@ -29,9 +28,11 @@ pub struct Transaction {
     pub created_ledger: u32,
     pub updated_ledger: u32,
     pub settlement_id: SorobanString,
+    pub retry_count: u32,
 }
 
 impl Transaction {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         env: &Env,
         id: SorobanString,
@@ -59,12 +60,13 @@ impl Transaction {
             created_ledger: ledger,
             updated_ledger: ledger,
             settlement_id: SorobanString::from_str(env, ""),
+            retry_count: 0,
         }
     }
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Settlement {
     pub id: SorobanString,
     pub asset_code: SorobanString,
@@ -98,7 +100,7 @@ impl Settlement {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DlqEntry {
     pub tx_id: SorobanString,
     pub error_reason: SorobanString,
@@ -123,19 +125,22 @@ impl DlqEntry {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
     Initialized(Address),
+    AdminTransferred(Address, Address),
+    AdminTransferProposed(Address, Address),
     RelayerGranted(Address),
     RelayerRevoked(Address),
     DepositRegistered(SorobanString, SorobanString),
-    StatusUpdated(SorobanString, TransactionStatus),
+    StatusUpdated(SorobanString, TransactionStatus, TransactionStatus),
     SettlementFinalized(SorobanString, SorobanString, i128),
-    AdminTransferred(Address, Address),
-    AdminTransferProposed(Address, Address),
+    Settled(SorobanString, SorobanString),
     ContractPaused(Address),
     ContractUnpaused(Address),
     MovedToDlq(SorobanString, SorobanString),
-    MaxRetriesExceeded(SorobanString),
     DlqRetried(SorobanString),
-    Settled(SorobanString, SorobanString),
+    MaxRetriesExceeded(SorobanString),
     AssetAdded(SorobanString),
     AssetRemoved(SorobanString),
+    TransactionCompleted(SorobanString, Address, i128, SorobanString),
+    TransactionFailed(SorobanString, Address, i128, SorobanString, SorobanString),
+    TransactionCancelled(SorobanString, Address, i128, SorobanString),
 }
