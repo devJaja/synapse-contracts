@@ -2498,3 +2498,57 @@ fn set_min_deposit_emits_min_deposit_updated_event() {
     let events = env.events().all();
     assert!(!events.is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// Non-relayer access control — issue #412
+// ---------------------------------------------------------------------------
+
+#[test]
+#[should_panic(expected = "not relayer")]
+fn non_relayer_cannot_register_deposit() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    client.add_asset(&admin, &usd(&env));
+    let rando = Address::generate(&env);
+    register(&env, &client, &rando, "anchor-nr-1", 100_000_000);
+}
+
+#[test]
+#[should_panic(expected = "not relayer")]
+fn non_relayer_cannot_mark_processing() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+    let tx_id = register(&env, &client, &relayer, "anchor-nr-2", 100_000_000);
+    let rando = Address::generate(&env);
+    client.mark_processing(&rando, &tx_id);
+}
+
+#[test]
+#[should_panic(expected = "not relayer")]
+fn non_relayer_cannot_mark_completed() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+    let tx_id = register(&env, &client, &relayer, "anchor-nr-3", 100_000_000);
+    client.mark_processing(&relayer, &tx_id);
+    let rando = Address::generate(&env);
+    client.mark_completed(&rando, &tx_id);
+}
+
+#[test]
+#[should_panic(expected = "not relayer")]
+fn non_relayer_cannot_mark_failed() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+    let tx_id = register(&env, &client, &relayer, "anchor-nr-4", 100_000_000);
+    let rando = Address::generate(&env);
+    client.mark_failed(&rando, &tx_id, &SorobanString::from_str(&env, "err"));
+}
