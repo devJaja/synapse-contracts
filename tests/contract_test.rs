@@ -2574,3 +2574,33 @@ fn callback_type_stored_on_transaction() {
     let tx = client.get_transaction(&tx_id);
     assert_eq!(tx.callback_type, Some(callback_type_val));
 }
+
+// ---------------------------------------------------------------------------
+// Issue #421 — get_transaction_by_anchor_id returns correct tx
+// ---------------------------------------------------------------------------
+
+#[test]
+fn get_transaction_by_anchor_id_returns_correct_tx() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+
+    let anchor_id = SorobanString::from_str(&env, "issue-421-anchor");
+    let tx_id = client.register_deposit(
+        &relayer,
+        &anchor_id,
+        &Address::generate(&env),
+        &75_000_000,
+        &usd(&env),
+        &None,
+        &None,
+        &None,
+    );
+
+    let tx = client.get_transaction_by_anchor_id(&anchor_id);
+    assert_eq!(tx.id, tx_id);
+    assert_eq!(tx.anchor_transaction_id, anchor_id);
+    assert_eq!(tx.amount, 75_000_000);
+}
