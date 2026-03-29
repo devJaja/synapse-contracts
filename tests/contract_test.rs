@@ -2498,3 +2498,35 @@ fn set_min_deposit_emits_min_deposit_updated_event() {
     let events = env.events().all();
     assert!(!events.is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// Issue #405 — settlement_id written back to transactions after settlement
+// ---------------------------------------------------------------------------
+
+#[test]
+fn settlement_id_written_back_to_transactions() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+
+    let tx1 = register(&env, &client, &relayer, "backref-1", 50_000_000);
+    let tx2 = register(&env, &client, &relayer, "backref-2", 50_000_000);
+    client.mark_processing(&relayer, &tx1);
+    client.mark_completed(&relayer, &tx1);
+    client.mark_processing(&relayer, &tx2);
+    client.mark_completed(&relayer, &tx2);
+
+    let settlement_id = client.finalize_settlement(
+        &relayer,
+        &usd(&env),
+        &vec![&env, tx1.clone(), tx2.clone()],
+        &100_000_000,
+        &0u64,
+        &1u64,
+    );
+
+    assert_eq!(client.get_transaction(&tx1).settlement_id, settlement_id);
+    assert_eq!(client.get_transaction(&tx2).settlement_id, settlement_id);
+}
