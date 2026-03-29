@@ -2498,3 +2498,44 @@ fn set_min_deposit_emits_min_deposit_updated_event() {
     let events = env.events().all();
     assert!(!events.is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// feat/emit-settlement-created
+// ---------------------------------------------------------------------------
+
+#[test]
+fn finalize_settlement_emits_settlement_created_event() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "sc-ext-1"),
+        &Address::generate(&env),
+        &100_000_000,
+        &usd(&env),
+        &None,
+        &None,
+    );
+    client.mark_processing(&relayer, &tx_id);
+    client.mark_completed(&relayer, &tx_id);
+    let settlement_id = client.finalize_settlement(
+        &relayer,
+        &usd(&env),
+        &vec![&env, tx_id],
+        &100_000_000,
+        &0u64,
+        &1u64,
+    );
+    let all_events = env.events().all();
+    let found = all_events.iter().any(|(_, _, data)| {
+        if let Ok((event, _)) = <(Event, u32)>::try_from_val(&env, &data) {
+            event == Event::SettlementCreated(settlement_id.clone())
+        } else {
+            false
+        }
+    });
+    assert!(found, "SettlementCreated event not emitted");
+}

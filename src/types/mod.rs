@@ -135,6 +135,7 @@ pub enum Event {
     StatusUpdated(SorobanString, TransactionStatus, TransactionStatus),
     SettlementFinalized(SorobanString, SorobanString, i128),
     Settled(SorobanString, SorobanString),
+    SettlementCreated(SorobanString),
     ContractPaused(Address),
     ContractUnpaused(Address),
     RelayerRevoked(Address),
