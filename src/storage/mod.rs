@@ -28,6 +28,8 @@ fn extend_instance_ttl(env: &Env) {
 }
 
 fn extend_persistent_ttl(env: &Env, key: &StorageKey) {
+    // TTL extension is done after the persistent write succeeds.
+    // This is a best-effort operation and is kept separate from the main write flow.
     env.storage()
         .persistent()
         .extend_ttl(key, TX_TTL_THRESHOLD, TX_TTL_EXTEND_TO);
@@ -236,6 +238,7 @@ pub mod dlq {
         extend_persistent_ttl(env, &count_key);
         let key = StorageKey::Dlq(entry.tx_id.clone());
         env.storage().persistent().set(&key, entry);
+        // Extend DLQ entry TTL immediately after the entry write succeeds.
         extend_persistent_ttl(env, &key);
     }
 
@@ -270,6 +273,7 @@ pub mod dlq {
     pub fn update(env: &Env, entry: &DlqEntry) {
         let key = StorageKey::Dlq(entry.tx_id.clone());
         env.storage().persistent().set(&key, entry);
+        // Extend DLQ entry TTL immediately after the entry update succeeds.
         extend_persistent_ttl(env, &key);
     }
 }

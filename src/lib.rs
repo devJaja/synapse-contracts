@@ -325,6 +325,19 @@ impl SynapseContract {
         );
     }
 
+    pub fn touch_dlq_entry(env: Env, caller: Address, tx_id: SorobanString) {
+        require_not_paused(&env);
+        require_relayer(&env, &caller);
+        let entry = dlq::get(&env, &tx_id).expect("dlq entry not found");
+        dlq::update(&env, &entry);
+    }
+
+    pub fn get_dlq_ttl(env: Env, tx_id: SorobanString) -> u32 {
+        let key = storage::StorageKey::Dlq(tx_id);
+        let ttl: Option<u32> = env.storage().persistent().get_ttl(&key);
+        ttl.unwrap_or(0u32)
+    }
+
     pub fn retry_dlq(env: Env, caller: Address, tx_id: SorobanString) {
         require_not_paused(&env);
         caller.require_auth();
