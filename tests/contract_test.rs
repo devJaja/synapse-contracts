@@ -295,6 +295,22 @@ fn finalize_settlement_panics_when_paused() {
 // ---------------------------------------------------------------------------
 
 #[test]
+fn add_asset_emits_asset_added_event() {
+    let env = Env::default();
+    let (admin, contract_id, client) = setup(&env);
+    let asset = usd(&env);
+    client.add_asset(&admin, &asset);
+
+    let all_events = env.events().all();
+    let (evt_contract, evt_topics, evt_data) = all_events.last().unwrap();
+    let topics: soroban_sdk::Vec<Val> = (symbol_short!("synapse"),).into_val(&env);
+    assert_eq!(evt_contract, contract_id);
+    assert_eq!(evt_topics, topics);
+    let (event, _ledger) = event_data(&env, evt_data);
+    assert_eq!(event, Event::AssetAdded(asset));
+}
+
+#[test]
 fn add_and_remove_asset() {
     let env = Env::default();
     let (admin, _, client) = setup(&env);
