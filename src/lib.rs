@@ -138,7 +138,7 @@ impl SynapseContract {
         let mut buf = [0u8; 12];
         let len = asset_code.len() as usize;
         if len > buf.len() {
-            panic!("invalid asset code")
+            panic!("asset_code must not exceed 12 characters")
         }
         asset_code.copy_into_slice(&mut buf[..len]);
         for b in &buf[..len] {
