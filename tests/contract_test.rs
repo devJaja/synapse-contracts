@@ -2498,3 +2498,31 @@ fn set_min_deposit_emits_min_deposit_updated_event() {
     let events = env.events().all();
     assert!(!events.is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// is_asset_allowed query — regression for #87
+// ---------------------------------------------------------------------------
+
+#[test]
+fn is_asset_allowed_returns_true_after_add() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    client.add_asset(&admin, &usd(&env));
+    assert!(client.is_asset_allowed(&usd(&env)));
+}
+
+#[test]
+fn is_asset_allowed_returns_false_after_remove() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    client.add_asset(&admin, &usd(&env));
+    client.remove_asset(&admin, &usd(&env));
+    assert!(!client.is_asset_allowed(&usd(&env)));
+}
+
+#[test]
+fn is_asset_allowed_returns_false_for_never_added_asset() {
+    let env = Env::default();
+    let (_, _, client) = setup(&env);
+    assert!(!client.is_asset_allowed(&usd(&env)));
+}
