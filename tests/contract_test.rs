@@ -2408,3 +2408,12 @@ fn max_retries_exceeded_emits_event() {
         (Event::MaxRetriesExceeded(tx_id), ledger),
     );
 }
+
+#[test]
+fn set_min_deposit_emits_min_deposit_updated_event() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    client.set_min_deposit(&admin, &500_000_000);
+    let events = env.events().all();
+    assert!(!events.is_empty());
+}
