@@ -4,13 +4,20 @@ extern crate alloc;
 
 mod access;
 mod events;
-mod storage;
+pub mod storage;
 pub mod types;
 
-use access::{accept_pending_admin, require_admin, require_not_paused, require_relayer, set_pending_admin};
+use access::{
+    accept_pending_admin, require_admin, require_not_paused, require_relayer, set_pending_admin,
+};
 use events::emit;
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Bytes, Env, String as SorobanString, Symbol, Vec};
-use storage::{assets, deposits, dlq, max_deposit, min_deposit, relayers, settlements};
+use soroban_sdk::{
+    contract, contractimpl, symbol_short, Address, Bytes, Env, String as SorobanString, Symbol, Vec,
+};
+use storage::{
+    admin, assets, deposits, dlq, max_deposit, max_retries, min_deposit, pending_admin, relayers,
+    settlements,
+};
 use types::{DlqEntry, Event, Settlement, Transaction, TransactionStatus, MAX_RETRIES};
 
 #[contract]
@@ -22,7 +29,6 @@ fn next_id(env: &Env, counter_key: Symbol) -> SorobanString {
 
     let ts = env.ledger().timestamp();
     let seq = env.ledger().sequence();
-
     let mut data = [0u8; 16];
     data[..8].copy_from_slice(&ts.to_be_bytes());
     data[8..12].copy_from_slice(&seq.to_be_bytes());
@@ -30,10 +36,24 @@ fn next_id(env: &Env, counter_key: Symbol) -> SorobanString {
 
     let hash = env.crypto().sha256(&Bytes::from_slice(env, &data));
     let bytes = hash.to_array();
-
     let mut hex = [0u8; 32];
     const HEX: &[u8] = b"0123456789abcdef";
     for i in 0..16 {
+        hex[i * 2] = HEX[(bytes[i] >> 4) as usize];
+        hex[i * 2 + 1] = HEX[(bytes[i] & 0xf) as usize];
+    }
+    SorobanString::from_bytes(env, &hex)
+}
+
+fn tx_id_from_anchor(env: &Env, anchor_transaction_id: &SorobanString) -> SorobanString {
+    let len = anchor_transaction_id.len() as usize;
+    let mut buf = [0u8; 256];
+    anchor_transaction_id.copy_into_slice(&mut buf[..len]);
+    let hash = env.crypto().sha256(&Bytes::from_slice(env, &buf[..len]));
+    let bytes = hash.to_array();
+    let mut hex = [0u8; 64];
+    const HEX: &[u8] = b"0123456789abcdef";
+    for i in 0..32 {
         hex[i * 2] = HEX[(bytes[i] >> 4) as usize];
         hex[i * 2 + 1] = HEX[(bytes[i] & 0xf) as usize];
     }
@@ -53,13 +73,6 @@ impl SynapseContract {
 
     pub fn grant_relayer(env: Env, caller: Address, relayer: Address) {
         require_not_paused(&env);
-        let zero_addr = Address::from_string(&SorobanString::from_str(
-            &env,
-            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
-        ));
-        if relayer == zero_addr {
-            panic!("invalid relayer address")
-        }
         require_admin(&env, &caller);
         relayers::add(&env, &relayer);
         emit(&env, Event::RelayerGranted(relayer));
@@ -75,76 +88,64 @@ impl SynapseContract {
         emit(&env, Event::RelayerRevoked(relayer));
     }
 
-    pub fn transfer_admin(env: Env, caller: Address, new_admin: Address) {
-        require_not_paused(&env);
-        require_admin(&env, &caller);
-        let old_admin = storage::admin::get(&env);
-        storage::admin::set(&env, &new_admin);
-        emit(&env, Event::AdminTransferred(old_admin, new_admin));
-    }
-
     pub fn propose_admin(env: Env, caller: Address, new_admin: Address) {
         require_not_paused(&env);
-        require_admin(&env, &caller);
-        let current_admin = storage::admin::get(&env);
-        storage::pending_admin::set(&env, &new_admin);
-        emit(&env, Event::AdminTransferProposed(current_admin, new_admin));
+        let current = admin::get(&env);
+        set_pending_admin(&env, &caller, &new_admin);
+        emit(&env, Event::AdminTransferProposed(current, new_admin));
     }
 
     pub fn accept_admin(env: Env, caller: Address) {
         require_not_paused(&env);
-        caller.require_auth();
-        let pending = storage::pending_admin::get(&env).expect("no pending admin");
-        if caller != pending {
-            panic!("not pending admin")
-        }
-        let old_admin = storage::admin::get(&env);
-        storage::admin::set(&env, &caller);
-        storage::pending_admin::clear(&env);
-        emit(&env, Event::AdminTransferred(old_admin, caller));
+        let old = admin::get(&env);
+        accept_pending_admin(&env, &caller);
+        let new = admin::get(&env);
+        emit(&env, Event::AdminTransferred(old, new));
     }
 
-    pub fn get_admin(env: Env) -> Address {
-        storage::admin::get(&env)
+    pub fn transfer_admin(env: Env, caller: Address, new_admin: Address) {
+        require_not_paused(&env);
+        require_admin(&env, &caller);
+        let old = admin::get(&env);
+        storage::admin::set(&env, &new_admin);
+        emit(&env, Event::AdminTransferred(old, new_admin));
     }
 
     pub fn get_pending_admin(env: Env) -> Option<Address> {
-        storage::pending_admin::get(&env)
+        pending_admin::get(&env)
     }
 
     pub fn pause(env: Env, caller: Address) {
         require_admin(&env, &caller);
         storage::pause::set(&env, true);
-        emit(&env, Event::ContractPaused);
+        emit(&env, Event::ContractPaused(caller));
     }
 
     pub fn unpause(env: Env, caller: Address) {
         require_admin(&env, &caller);
         storage::pause::set(&env, false);
-        emit(&env, Event::ContractUnpaused);
-    }
-
-    pub fn is_paused(env: Env) -> bool {
-        storage::pause::is_paused(&env)
+        emit(&env, Event::ContractUnpaused(caller));
     }
 
     pub fn add_asset(env: Env, caller: Address, asset_code: SorobanString) {
         require_not_paused(&env);
         require_admin(&env, &caller);
-        if asset_code.len() == 0 {
+        if asset_code.is_empty() {
             panic!("invalid asset code")
         }
+
         let mut buf = [0u8; 12];
         let len = asset_code.len() as usize;
         if len > buf.len() {
             panic!("invalid asset code")
         }
         asset_code.copy_into_slice(&mut buf[..len]);
-        for b in &buf[..len] {
-            if !b.is_ascii_uppercase() && !b.is_ascii_digit() {
+        for byte in &buf[..len] {
+            if !byte.is_ascii_uppercase() && !byte.is_ascii_digit() {
                 panic!("invalid asset code")
             }
         }
+
         assets::add(&env, &asset_code);
         emit(&env, Event::AssetAdded(asset_code));
     }
@@ -189,6 +190,20 @@ impl SynapseContract {
         max_deposit::get(&env).unwrap_or(0)
     }
 
+    pub fn set_max_retries(env: Env, caller: Address, max_retries: u32) {
+        require_not_paused(&env);
+        require_admin(&env, &caller);
+        if max_retries == 0 {
+            panic!("max retries must be greater than 0")
+        }
+        max_retries::set(&env, &max_retries);
+    }
+
+    pub fn get_max_retries(env: Env) -> u32 {
+        max_retries::get(&env).unwrap_or(MAX_RETRIES)
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub fn register_deposit(
         env: Env,
         caller: Address,
@@ -201,7 +216,7 @@ impl SynapseContract {
     ) -> SorobanString {
         require_not_paused(&env);
         require_relayer(&env, &caller);
-        if anchor_transaction_id.len() == 0 {
+        if anchor_transaction_id.is_empty() {
             panic!("anchor_transaction_id must not be empty")
         }
         assets::require_allowed(&env, &asset_code);
@@ -217,16 +232,15 @@ impl SynapseContract {
             }
         }
 
-        if let Some(ref mt) = memo_type {
+        if let Some(ref memo_type) = memo_type {
             let mut buf = [0u8; 16];
-            let len = mt.len() as usize;
-            if len <= buf.len() {
-                mt.copy_into_slice(&mut buf[..len]);
-                let s = &buf[..len];
-                if s != b"text" && s != b"id" && s != b"hash" && s != b"return" {
-                    panic!("invalid memo_type")
-                }
-            } else {
+            let len = memo_type.len() as usize;
+            if len > buf.len() {
+                panic!("invalid memo_type")
+            }
+            memo_type.copy_into_slice(&mut buf[..len]);
+            let value = &buf[..len];
+            if value != b"text" && value != b"id" && value != b"hash" && value != b"return" {
                 panic!("invalid memo_type")
             }
         }
@@ -235,7 +249,7 @@ impl SynapseContract {
             return existing;
         }
 
-        let tx_id = next_id(&env, symbol_short!("txnonce"));
+        let tx_id = tx_id_from_anchor(&env, &anchor_transaction_id);
         let tx = Transaction::new(
             &env,
             tx_id,
@@ -251,7 +265,10 @@ impl SynapseContract {
         let id = tx.id.clone();
         deposits::save(&env, &tx);
         deposits::index_anchor_id(&env, &anchor_transaction_id, &id);
-        emit(&env, Event::DepositRegistered(id.clone(), anchor_transaction_id));
+        emit(
+            &env,
+            Event::DepositRegistered(id.clone(), anchor_transaction_id),
+        );
         id
     }
 
@@ -263,14 +280,18 @@ impl SynapseContract {
         require_not_paused(&env);
         require_relayer(&env, &caller);
         let mut tx = deposits::get(&env, &tx_id);
-        let old_status = tx.status.clone();
         if tx.status != TransactionStatus::Pending {
             panic!("transaction must be Pending");
         }
+
+        let old = tx.status.clone();
         tx.status = TransactionStatus::Processing;
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
-        emit(&env, Event::StatusUpdated(tx_id, old_status, TransactionStatus::Processing));
+        emit(
+            &env,
+            Event::StatusUpdated(tx_id, old, TransactionStatus::Processing),
+        );
     }
 
     pub fn mark_completed(env: Env, caller: Address, tx_id: SorobanString) {
@@ -280,14 +301,20 @@ impl SynapseContract {
         if tx.status != TransactionStatus::Processing {
             panic!("transaction must be Processing");
         }
-        let old_status = tx.status.clone();
+
+        let old = tx.status.clone();
         tx.status = TransactionStatus::Completed;
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
-        if dlq::get(&env, &tx_id).is_some() {
-            dlq::remove(&env, &tx_id);
-        }
-        emit(&env, Event::StatusUpdated(tx_id, old_status, TransactionStatus::Completed));
+        dlq::remove(&env, &tx_id);
+        emit(
+            &env,
+            Event::StatusUpdated(tx_id.clone(), old, TransactionStatus::Completed),
+        );
+        emit(
+            &env,
+            Event::TransactionCompleted(tx_id, tx.stellar_account, tx.amount, tx.asset_code),
+        );
     }
 
     pub fn mark_failed(
@@ -298,67 +325,93 @@ impl SynapseContract {
     ) {
         require_not_paused(&env);
         require_relayer(&env, &caller);
-        if error_reason.len() == 0 {
+        if error_reason.is_empty() {
             panic!("error_reason must not be empty");
         }
+
         let mut tx = deposits::get(&env, &tx_id);
-        if tx.status != TransactionStatus::Pending && tx.status != TransactionStatus::Processing {
-            panic!("transaction must be Pending or Processing");
+        match tx.status {
+            TransactionStatus::Pending | TransactionStatus::Processing => {}
+            TransactionStatus::Completed => panic!("cannot fail completed transaction"),
+            _ => panic!("transaction must be Pending or Processing"),
         }
-        let old_status = tx.status.clone();
+
+        let old = tx.status.clone();
         tx.status = TransactionStatus::Failed;
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
-        emit(&env, Event::StatusUpdated(tx_id.clone(), old_status, TransactionStatus::Failed));
-        // Preserve retry_count across fail→retry cycles
-        let prior_retries = dlq::get(&env, &tx_id).map(|e| e.retry_count).unwrap_or(0);
-        let mut entry = DlqEntry::new(&env, tx_id.clone(), error_reason.clone());
-        entry.retry_count = prior_retries;
+        emit(
+            &env,
+            Event::StatusUpdated(tx_id.clone(), old, TransactionStatus::Failed),
+        );
+
+        let entry = DlqEntry::new(&env, tx_id.clone(), error_reason.clone());
         dlq::push(&env, &entry);
-        emit(&env, Event::MovedToDlq(tx_id, error_reason));
+        emit(&env, Event::MovedToDlq(tx_id.clone(), error_reason.clone()));
+        emit(
+            &env,
+            Event::TransactionFailed(
+                tx_id,
+                tx.stellar_account,
+                tx.amount,
+                tx.asset_code,
+                error_reason,
+            ),
+        );
     }
 
     pub fn retry_dlq(env: Env, caller: Address, tx_id: SorobanString) {
         require_not_paused(&env);
         caller.require_auth();
-        let mut entry = dlq::get(&env, &tx_id).expect("dlq entry not found");
-        let mut tx = deposits::get(&env, &tx_id);
+        if dlq::get(&env, &tx_id).is_none() {
+            panic!("dlq entry not found");
+        }
 
+        let mut tx = deposits::get(&env, &tx_id);
         let is_admin = caller == storage::admin::get(&env);
         let is_original_relayer = caller == tx.relayer;
         if !is_admin && !is_original_relayer {
             panic!("not admin or original relayer")
         }
-
-        if entry.retry_count >= MAX_RETRIES {
+        let current_max_retries = max_retries::get(&env).unwrap_or(MAX_RETRIES);
+        if tx.retry_count >= current_max_retries {
             emit(&env, Event::MaxRetriesExceeded(tx_id.clone()));
             panic!("max retries exceeded");
         }
 
-        let old_status = tx.status.clone();
+        let old = tx.status.clone();
         tx.status = TransactionStatus::Pending;
         tx.updated_ledger = env.ledger().sequence();
-        entry.retry_count += 1;
-        entry.last_retry_ledger = env.ledger().sequence();
+        tx.retry_count += 1;
         deposits::save(&env, &tx);
-        // Keep the entry so retry_count survives subsequent fail→retry cycles.
-        // It is removed when the tx is successfully completed (mark_completed).
-        dlq::push(&env, &entry);
-        emit(&env, Event::StatusUpdated(tx_id.clone(), old_status, TransactionStatus::Pending));
-        emit(&env, Event::DlqRetried(tx_id));
+        dlq::remove(&env, &tx_id);
+        emit(&env, Event::DlqRetried(tx_id.clone()));
+        emit(
+            &env,
+            Event::StatusUpdated(tx_id, old, TransactionStatus::Pending),
+        );
     }
 
     pub fn cancel_transaction(env: Env, caller: Address, tx_id: SorobanString) {
         require_not_paused(&env);
         require_admin(&env, &caller);
         let mut tx = deposits::get(&env, &tx_id);
-        let old_status = tx.status.clone();
+        let old = tx.status.clone();
         tx.status = TransactionStatus::Cancelled;
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
-        emit(&env, Event::StatusUpdated(tx_id, old_status, TransactionStatus::Cancelled));
+        dlq::remove(&env, &tx_id);
+        emit(
+            &env,
+            Event::StatusUpdated(tx_id.clone(), old, TransactionStatus::Cancelled),
+        );
+        emit(
+            &env,
+            Event::TransactionCancelled(tx_id, tx.stellar_account, tx.amount, tx.asset_code),
+        );
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn finalize_settlement(
         env: Env,
         caller: Address,
@@ -374,8 +427,17 @@ impl SynapseContract {
             panic!("period_start must be <= period_end")
         }
 
+        let mut sum: i128 = 0;
+        for tx_id in tx_ids.iter() {
+            let tx = deposits::get(&env, &tx_id);
+            sum = sum.checked_add(tx.amount).expect("amount overflow");
+        }
+        if sum != total_amount {
+            panic!("total_amount mismatch");
+        }
+
         let settlement_id = next_id(&env, symbol_short!("stlnonce"));
-        let s = Settlement::new(
+        let settlement = Settlement::new(
             &env,
             settlement_id,
             asset_code.clone(),
@@ -384,26 +446,19 @@ impl SynapseContract {
             period_start,
             period_end,
         );
-        let id = s.id.clone();
-
-        let n = tx_ids.len();
-        let mut sum: i128 = 0;
+        let id = settlement.id.clone();
+        let len = tx_ids.len();
         let mut i: u32 = 0;
-        while i < n {
-            sum += deposits::get(&env, &tx_ids.get(i).unwrap()).amount;
-            i += 1;
-        }
-        if sum != total_amount {
-            panic!("total_amount mismatch");
-        }
-
-        let mut i: u32 = 0;
-        while i < n {
+        while i < len {
             let tx_id = tx_ids.get(i).unwrap();
             let mut tx = deposits::get(&env, &tx_id);
-            if tx.settlement_id.len() > 0 {
+            if !tx.settlement_id.is_empty() {
                 panic!("transaction already settled");
             }
+            if tx.status != TransactionStatus::Completed {
+                panic!("transaction not completed");
+            }
+
             tx.settlement_id = id.clone();
             tx.updated_ledger = env.ledger().sequence();
             deposits::save(&env, &tx);
@@ -411,8 +466,11 @@ impl SynapseContract {
             i += 1;
         }
 
-        settlements::save(&env, &s);
-        emit(&env, Event::SettlementFinalized(id.clone(), asset_code, total_amount));
+        settlements::save(&env, &settlement);
+        emit(
+            &env,
+            Event::SettlementFinalized(id.clone(), asset_code, total_amount),
+        );
         id
     }
 
@@ -424,7 +482,23 @@ impl SynapseContract {
         dlq::get(&env, &tx_id)
     }
 
+    pub fn get_dlq_count(env: Env) -> i128 {
+        dlq::get_count(&env)
+    }
+
+    pub fn get_admin(env: Env) -> Address {
+        storage::admin::get(&env)
+    }
+
+    pub fn is_paused(env: Env) -> bool {
+        storage::pause::is_paused(&env)
+    }
+
     pub fn is_relayer(env: Env, address: Address) -> bool {
         relayers::has(&env, &address)
+    }
+
+    pub fn get_dlq_count(env: Env) -> i128 {
+        dlq::get_count(&env)
     }
 }
