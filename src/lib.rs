@@ -203,6 +203,9 @@ impl SynapseContract {
     ) -> SorobanString {
         require_not_paused(&env);
         require_relayer(&env, &caller);
+        if amount <= 0 {
+            panic!("amount must be positive");
+        }
         if anchor_transaction_id.len() == 0 {
             panic!("anchor_transaction_id must not be empty")
         }

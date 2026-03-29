@@ -479,6 +479,47 @@ fn register_deposit_rejects_non_relayer() {
     );
 }
 
+// Zero deposit check — issue #394
+// ---------------------------------------------------------------------------
+
+#[test]
+#[should_panic(expected = "amount must be positive")]
+fn register_deposit_panics_on_zero_amount() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+    client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "zero-amount"),
+        &Address::generate(&env),
+        &0,
+        &usd(&env),
+        &None,
+        &None,
+    );
+}
+
+#[test]
+#[should_panic(expected = "amount must be positive")]
+fn register_deposit_panics_on_negative_amount() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+    client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "neg-amount"),
+        &Address::generate(&env),
+        &-1,
+        &usd(&env),
+        &None,
+        &None,
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Max deposit
 // ---------------------------------------------------------------------------
