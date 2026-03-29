@@ -2498,3 +2498,45 @@ fn set_min_deposit_emits_min_deposit_updated_event() {
     let events = env.events().all();
     assert!(!events.is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// get_settlement — regression for #84
+// ---------------------------------------------------------------------------
+
+#[test]
+fn get_settlement_returns_correct_settlement() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+
+    let tx_id = client.register_deposit(
+        &relayer,
+        &SorobanString::from_str(&env, "issue-84-settle"),
+        &Address::generate(&env),
+        &50_000_000,
+        &usd(&env),
+        &None,
+        &None,
+    );
+    client.mark_processing(&relayer, &tx_id);
+    client.mark_completed(&relayer, &tx_id);
+
+    let settlement_id = client.finalize_settlement(
+        &relayer,
+        &usd(&env),
+        &vec![&env, tx_id.clone()],
+        &50_000_000,
+        &10u64,
+        &20u64,
+    );
+
+    let s = client.get_settlement(&settlement_id);
+    assert_eq!(s.id, settlement_id);
+    assert_eq!(s.asset_code, usd(&env));
+    assert_eq!(s.tx_ids, vec![&env, tx_id]);
+    assert_eq!(s.total_amount, 50_000_000);
+    assert_eq!(s.period_start, 10u64);
+    assert_eq!(s.period_end, 20u64);
+}
