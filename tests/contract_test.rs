@@ -2498,3 +2498,37 @@ fn set_min_deposit_emits_min_deposit_updated_event() {
     let events = env.events().all();
     assert!(!events.is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// Deterministic ID generation — issue #417
+// ---------------------------------------------------------------------------
+
+#[test]
+fn same_anchor_transaction_id_produces_same_tx_id() {
+    let env = Env::default();
+    let (admin, _, client) = setup(&env);
+    let relayer = Address::generate(&env);
+    client.grant_relayer(&admin, &relayer);
+    client.add_asset(&admin, &usd(&env));
+    let anchor_id = SorobanString::from_str(&env, "anchor-det-001");
+    let depositor = Address::generate(&env);
+    let id1 = client.register_deposit(
+        &relayer,
+        &anchor_id,
+        &depositor,
+        &100_000_000,
+        &usd(&env),
+        &None,
+        &None,
+    );
+    let id2 = client.register_deposit(
+        &relayer,
+        &anchor_id,
+        &depositor,
+        &100_000_000,
+        &usd(&env),
+        &None,
+        &None,
+    );
+    assert_eq!(id1, id2);
+}
