@@ -46,7 +46,7 @@ impl Transaction {
         asset_code: SorobanString,
         memo: Option<SorobanString>,
         memo_type: Option<SorobanString>,
-        _unused: Option<SorobanString>,
+        callback_type: Option<SorobanString>,
     ) -> Self {
         let ledger = env.ledger().sequence();
         Self {
@@ -58,7 +58,7 @@ impl Transaction {
             asset_code,
             memo,
             memo_type,
-            callback_type,
+            callback_type: None,
             status: TransactionStatus::Pending,
             created_ledger: ledger,
             updated_ledger: ledger,
@@ -135,6 +135,7 @@ pub enum Event {
     StatusUpdated(SorobanString, TransactionStatus),
     SettlementFinalized(SorobanString, SorobanString, i128),
     Settled(SorobanString, SorobanString),
+    SettlementCreated(SorobanString),
     ContractPaused(Address),
     ContractUnpaused(Address),
     RelayerRevoked(Address),

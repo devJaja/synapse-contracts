@@ -158,6 +158,7 @@ pub mod assets {
             .get(&StorageKey::AssetCount)
             .unwrap_or(0u32)
     }
+
     fn set_count(env: &Env, n: u32) {
         env.storage().instance().set(&StorageKey::AssetCount, &n);
     }
@@ -226,6 +227,12 @@ pub mod deposits {
         env.storage()
             .persistent()
             .get(&StorageKey::AnchorIdx(anchor_id.clone()))
+    }
+
+    pub fn anchor_exists(env: &Env, anchor_id: &SorobanString) -> bool {
+        env.storage()
+            .persistent()
+            .has(&StorageKey::AnchorIdx(anchor_id.clone()))
     }
 }
 
