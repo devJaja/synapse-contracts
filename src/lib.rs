@@ -265,7 +265,7 @@ impl SynapseContract {
         deposits::save(&env, &tx);
         emit(
             &env,
-            Event::StatusUpdated(tx_id, TransactionStatus::Processing),
+            Event::StatusUpdated(tx_id, old_status, TransactionStatus::Processing),
         );
     }
 
@@ -276,6 +276,7 @@ impl SynapseContract {
         if tx.status != TransactionStatus::Processing {
             panic!("transaction must be Processing");
         }
+        let old_status = tx.status.clone();
         tx.status = TransactionStatus::Completed;
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
@@ -284,7 +285,7 @@ impl SynapseContract {
         }
         emit(
             &env,
-            Event::StatusUpdated(tx_id, TransactionStatus::Completed),
+            Event::StatusUpdated(tx_id, old_status, TransactionStatus::Completed),
         );
     }
     // TODO(#26): enforce transition guard — must be Pending or Processing
@@ -313,7 +314,7 @@ impl SynapseContract {
         deposits::save(&env, &tx);
         emit(
             &env,
-            Event::StatusUpdated(tx_id.clone(), TransactionStatus::Failed),
+            Event::StatusUpdated(tx_id.clone(), old_status, TransactionStatus::Failed),
         );
         let entry = DlqEntry::new(&env, tx_id.clone(), error_reason.clone());
         dlq::push(&env, &entry);
@@ -345,7 +346,7 @@ impl SynapseContract {
 
         emit(
             &env,
-            Event::StatusUpdated(tx_id, TransactionStatus::Pending),
+            Event::StatusUpdated(tx_id, TransactionStatus::Failed, TransactionStatus::Pending),
         );
     }
 
@@ -354,12 +355,13 @@ impl SynapseContract {
         require_not_paused(&env);
         require_admin(&env, &caller);
         let mut tx = deposits::get(&env, &tx_id);
+        let old_status = tx.status.clone();
         tx.status = TransactionStatus::Cancelled;
         tx.updated_ledger = env.ledger().sequence();
         deposits::save(&env, &tx);
         emit(
             &env,
-            Event::StatusUpdated(tx_id, TransactionStatus::Cancelled),
+            Event::StatusUpdated(tx_id, old_status, TransactionStatus::Cancelled),
         );
     }
 
@@ -399,6 +401,10 @@ impl SynapseContract {
             emit(&env, Event::Settled(tx_id, settlement_id.clone()));
         }
         settlements::save(&env, &s);
+        emit(
+            &env,
+            Event::SettlementCreated(settlement_id.clone()),
+        );
         emit(
             &env,
             Event::SettlementFinalized(settlement_id.clone(), asset_code, total_amount),
@@ -620,7 +626,6 @@ mod tests {
         );
     }
 
-    #[test]
     #[test]
     #[should_panic(expected = "transaction must be Processing")]
     fn test_mark_completed_panics_when_not_processing() {
@@ -1365,5 +1370,44 @@ mod tests {
         let (contract, topics, _) = events.last().unwrap();
         assert_eq!(contract, contract_id);
         assert_eq!(topics, (symbol_short!("synapse"),).into_val(&env));
+    }
+
+    #[test]
+    fn test_finalize_settlement_emits_settlement_created() {
+        let env = Env::default();
+        let (admin, contract_id) = setup(&env);
+        let client = SynapseContractClient::new(&env, &contract_id);
+        let relayer = Address::generate(&env);
+        let asset = SorobanString::from_str(&env, "USD");
+        client.grant_relayer(&admin, &relayer);
+        client.add_asset(&admin, &asset);
+        let tx_id = client.register_deposit(
+            &relayer,
+            &SorobanString::from_str(&env, "sc-anchor-1"),
+            &Address::generate(&env),
+            &100_000_000i128,
+            &asset,
+            &None,
+            &None,
+        );
+        client.mark_processing(&relayer, &tx_id);
+        client.mark_completed(&relayer, &tx_id);
+        let settlement_id = client.finalize_settlement(
+            &relayer,
+            &asset,
+            &soroban_sdk::vec![&env, tx_id],
+            &100_000_000i128,
+            &0u64,
+            &1u64,
+        );
+        let events = env.events().all();
+        let found = events.iter().any(|(_, _, data)| {
+            if let Ok((event, _ledger)) = <(Event, u32)>::try_from_val(&env, &data) {
+                event == Event::SettlementCreated(settlement_id.clone())
+            } else {
+                false
+            }
+        });
+        assert!(found, "SettlementCreated event not emitted");
     }
 }
