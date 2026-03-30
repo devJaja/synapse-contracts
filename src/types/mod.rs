@@ -144,6 +144,7 @@ pub enum Event {
     MaxRetriesExceeded(SorobanString),
     AssetAdded(SorobanString),
     AssetRemoved(SorobanString),
+    MaxDepositUpdated(i128),
     TransactionCompleted(SorobanString, Address, i128, SorobanString),
     TransactionFailed(SorobanString, Address, i128, SorobanString, SorobanString),
     TransactionCancelled(SorobanString, Address, i128, SorobanString),
