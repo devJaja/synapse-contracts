@@ -224,9 +224,8 @@ impl SynapseContract {
                 panic!("amount exceeds max deposit")
             }
         }
-        if let Some(existing) = deposits::find_by_anchor_id(&env, &anchor_transaction_id) {
-            unlock_temp(&env, &anchor_transaction_id);
-            return existing;
+        if deposits::anchor_exists(&env, &anchor_transaction_id) {
+            panic!("anchor_transaction_id already registered");
         }
 
         let tx_id = next_id(&env, symbol_short!("txnonce"));
