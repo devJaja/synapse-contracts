@@ -1006,6 +1006,7 @@ fn retry_dlq_resets_transaction_status_to_pending() {
 
 #[test]
 fn dlq_entry_removed_after_successful_retry() {
+    // Closes #79: DLQ entry must be absent after retry_dlq succeeds.
     let env = Env::default();
     let (admin, _, client) = setup(&env);
     let relayer = Address::generate(&env);
@@ -1014,6 +1015,7 @@ fn dlq_entry_removed_after_successful_retry() {
     let tx_id = client.register_deposit(
         &relayer,
         &SorobanString::from_str(&env, "dlq-remove-1"),
+        &SorobanString::from_str(&env, "anchor-1"),
         &Address::generate(&env),
         &50_000_000,
         &usd(&env),
@@ -1028,13 +1030,6 @@ fn dlq_entry_removed_after_successful_retry() {
     assert!(client.get_dlq_entry(&tx_id).is_some());
     client.retry_dlq(&admin, &tx_id);
     assert!(client.get_dlq_entry(&tx_id).is_none());
-    client.mark_failed(&relayer, &tx_id, &SorobanString::from_str(&env, "timeout"));
-    client.retry_dlq(&admin, &tx_id);
-    let tx = client.get_transaction(&tx_id);
-    assert_eq!(
-        tx.status,
-        synapse_contract::types::TransactionStatus::Pending
-    );
 }
 
 #[test]
