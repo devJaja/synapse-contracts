@@ -347,9 +347,10 @@ fn remove_asset_emits_asset_removed_event() {
     assert!(!events.is_empty());
 }
 
+// Issue #397: remove_asset panics when the asset is not in the allowlist
 #[test]
 #[should_panic(expected = "asset not in allowlist")]
-fn remove_asset_rejects_unlisted_asset() {
+fn remove_asset_panics_when_asset_not_in_allowlist() {
     let env = Env::default();
     let (admin, _, client) = setup(&env);
     client.remove_asset(&admin, &usd(&env));
